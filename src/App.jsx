@@ -26,7 +26,7 @@ const translations = {
     subtitle: 'Умная CRM для кондитерских', inBase: 'В базе', totalSales: 'Сумма чеков',
     list: 'Список', board: 'Доска', calendar: 'Календарь', import: 'Импорт', export: 'Экспорт',
     addClient: 'Добавить клиента', search: 'Поиск по базе...', editCard: 'Редактировать карточку',
-    newClient: 'Новый клиент', basicData: 'Основные данные', name: 'Имя *', phone: 'Телефон *',
+    newClient: 'Новый клиент', basicData: 'Основные данные', name: 'Имя *', phone: 'Телефон *', clientBirthday: 'День рождения клиента',
     vip: 'VIP Клиент', allergies: 'Аллергии (Теги)', preferences: 'Предпочтения (Текст)',
     holidays: 'Праздники и Близкие', whoIsEvent: 'Кому праздник', relName: 'Имя близкого',
     relPhone: 'Телефон (Для сюрприза)', eventType: 'Событие', date: 'Дата *', addHoliday: '+ Добавить еще один праздник',
@@ -40,14 +40,15 @@ const translations = {
     workload: 'Загруженность по дням', noHistory: 'Нет истории покупок', receipt: 'Заказ / Чек', sum: 'Сумма:',
     write: 'Написать', copy: 'Копировать', copied: 'Скопировано', today: 'СЕГОДНЯ!', inDays: (d) => `Через ${d} дн.`,
     customDetailsTitle: 'Индивидуальный заказ (Детали):',
-    relationOptions: ['Себе', 'Жене', 'Мужу', 'Сыну', 'Дочери', 'Маме', 'Папе', 'Брату', 'Сестре', 'Другу', 'Другу семьи', 'Коллеге', 'Родственнику'],
-    eventOptions: ['День рождения', 'Годовщина', 'Юбилей', 'Другое']
+    relationOptions: ['Жене', 'Мужу', 'Сыну', 'Дочери', 'Маме', 'Папе', 'Брату', 'Сестре', 'Другу', 'Другу семьи', 'Коллеге', 'Родственнику', 'Другое'],
+    eventOptions: ['День рождения', 'Годовщина', 'Юбилей', 'Другое'],
+    myBday: 'Свой День рождения'
   },
   kz: {
     subtitle: 'Кондитерлерге арналған ақылды CRM', inBase: 'Базада', totalSales: 'Жалпы сома',
     list: 'Тізім', board: 'Тақта', calendar: 'Күнтізбе', import: 'Импорт', export: 'Экспорт',
     addClient: 'Клиент қосу', search: 'Базадан іздеу...', editCard: 'Карточканы өңдеу',
-    newClient: 'Жаңа клиент', basicData: 'Негізгі деректер', name: 'Аты *', phone: 'Телефон *',
+    newClient: 'Жаңа клиент', basicData: 'Негізгі деректер', name: 'Аты *', phone: 'Телефон *', clientBirthday: 'Клиенттің туған күні',
     vip: 'VIP Клиент', allergies: 'Аллергия (Тегтер)', preferences: 'Қалаулары (Мәтін)',
     holidays: 'Мерекелер мен Жақындары', whoIsEvent: 'Кімнің мерекесі', relName: 'Жақынының аты',
     relPhone: 'Телефоны (Сыйлық үшін)', eventType: 'Оқиға', date: 'Күні *', addHoliday: '+ Тағы бір мереке қосу',
@@ -61,8 +62,9 @@ const translations = {
     workload: 'Күндер бойынша жүктеме', noHistory: 'Сатып алу тарихы жоқ', receipt: 'Тапсырыс / Чек', sum: 'Сомасы:',
     write: 'Жазу', copy: 'Көшіру', copied: 'Көшірілді', today: 'БҮГІН!', inDays: (d) => `${d} күннен кейін`,
     customDetailsTitle: 'Жеке тапсырыс (Мәліметтер):',
-    relationOptions: ['Өзіме', 'Әйеліме', 'Күйеуіме', 'Ұлыма', 'Қызыма', 'Анама', 'Әкеме', 'Ағама/Ініме', 'Әпкеме/Қарындасыма', 'Досыма', 'Отбасы досына', 'Әріптесіме', 'Туысыма'],
-    eventOptions: ['Туған күн', 'Мерейтой (Годовщина)', 'Мерейтой (Юбилей)', 'Басқа']
+    relationOptions: ['Әйеліме', 'Күйеуіме', 'Ұлыма', 'Қызыма', 'Анама', 'Әкеме', 'Ағама/Ініме', 'Әпкеме/Қарындасыма', 'Досыма', 'Отбасы досына', 'Әріптесіме', 'Туысыма', 'Басқа'],
+    eventOptions: ['Туған күн', 'Мерейтой (Годовщина)', 'Мерейтой (Юбилей)', 'Басқа'],
+    myBday: 'Өз туған күні'
   }
 };
 
@@ -75,9 +77,25 @@ const App = () => {
 
   const getDaysLeft = (targetDate) => {
     if (!targetDate) return 999;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const event = new Date(targetDate); event.setHours(0, 0, 0, 0);
-    return Math.ceil((event - today) / (1000 * 60 * 60 * 24));
+    
+    const today = new Date(); 
+    today.setHours(0, 0, 0, 0);
+    
+    // Берем дату, которую ввел пользователь (например, 2001-05-13)
+    const originalDate = new Date(targetDate);
+    if (isNaN(originalDate)) return 999;
+
+    // Создаем новую дату: Год берем текущий (2024/2025), а месяц и день — из даты рождения.
+    const eventThisYear = new Date(today.getFullYear(), originalDate.getMonth(), originalDate.getDate());
+    eventThisYear.setHours(0, 0, 0, 0);
+
+    // Если этот праздник УЖЕ БЫЛ в этом году, значит следующий будет в следующем году (+1 год)
+    if (eventThisYear < today) {
+      eventThisYear.setFullYear(today.getFullYear() + 1);
+    }
+
+    // Считаем разницу в днях между СЕГОДНЯ и ближайшим ПРАЗДНИКОМ
+    return Math.ceil((eventThisYear - today) / (1000 * 60 * 60 * 24));
   };
 
   const getFormatDate = (dateString) => {
@@ -85,18 +103,33 @@ const App = () => {
     return new Date(dateString).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'kk-KZ', { day: '2-digit', month: 'long', year: 'numeric' });
   };
 
-  const getNearestEvent = (relatives) => {
-    const safeRelatives = relatives || [];
-    if (safeRelatives.length === 0) return { daysLeft: 999, date: null, name: '' };
-    let nearest = { daysLeft: 999, date: null, name: '' };
-    safeRelatives.forEach(rel => {
-      const days = getDaysLeft(rel.eventDate);
-      if (days >= 0 && days < nearest.daysLeft) nearest = { daysLeft: days, date: rel.eventDate, name: rel.relation + (rel.name ? ` (${rel.name})` : '') };
-    });
-    if (nearest.daysLeft === 999) {
-       const sorted = [...safeRelatives].sort((a,b) => new Date(b.eventDate) - new Date(a.eventDate));
-       nearest = { daysLeft: getDaysLeft(sorted[0].eventDate), date: sorted[0].eventDate, name: sorted[0].relation };
+  const getNearestEvent = (client) => {
+    let allEvents = [...(client.relatives || [])];
+    
+    if (client.clientBirthday) {
+      allEvents.push({
+        eventDate: client.clientBirthday,
+        relation: t.myBday,
+        name: client.clientName
+      });
     }
+
+    if (allEvents.length === 0) return { daysLeft: 999, date: null, name: '' };
+    
+    let nearest = { daysLeft: 999, date: null, name: '' };
+    
+    allEvents.forEach(rel => {
+      const days = getDaysLeft(rel.eventDate);
+      // Теперь days всегда будет от 0 до 365, никаких отрицательных чисел!
+      if (days >= 0 && days < nearest.daysLeft) {
+        nearest = { 
+            daysLeft: days, 
+            date: rel.eventDate, 
+            name: rel.relation + (rel.name && rel.relation !== t.myBday ? ` (${rel.name})` : '') 
+        };
+      }
+    });
+    
     return nearest;
   };
 
@@ -109,7 +142,6 @@ const App = () => {
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
 
-  // --- ПОДКЛЮЧЕНИЕ К FIREBASE ПРИ ЗАПУСКЕ ---
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -125,7 +157,6 @@ const App = () => {
 
   useEffect(() => {
     if (!user) return;
-    // Слушаем базу клиентов в реальном времени
     const clientsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'clients');
     const unsubscribeClients = onSnapshot(clientsRef, (snapshot) => {
       const loadedClients = [];
@@ -137,7 +168,6 @@ const App = () => {
       setIsDbConnected(false);
     });
 
-    // Слушаем каталог товаров
     const catalogRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog');
     const unsubscribeCatalog = onSnapshot(catalogRef, (docSnap) => {
       if (docSnap.exists() && docSnap.data().items) {
@@ -160,8 +190,8 @@ const App = () => {
   const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
 
   const initialNewClientState = { 
-    clientName: '', phone: '+7 ', isLoyalClient: false, tags: [], preferences: '',
-    relatives: [{ id: Date.now(), relation: 'Себе', name: '', phone: '', eventDate: '', eventType: 'День рождения' }],
+    clientName: '', phone: '+7 ', clientBirthday: '', isLoyalClient: false, tags: [], preferences: '',
+    relatives: [{ id: Date.now(), relation: 'Жене', name: '', phone: '', eventDate: '', eventType: 'День рождения' }],
     isCustomOrder: false, customOrderDetails: '', purchasedItems: [], totalPrice: 0, currentOrderStatus: 'Не связались'
   };
   const [newClient, setNewClient] = useState(initialNewClientState);
@@ -203,7 +233,6 @@ const App = () => {
     if (!catalog.includes(formattedName)) {
       const newCatalog = [...catalog, formattedName];
       setCatalog(newCatalog);
-      // Сохраняем новый товар в облачный каталог
       try {
          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: newCatalog });
       } catch(e) {}
@@ -217,7 +246,6 @@ const App = () => {
     setNewClient({ ...newClient, purchasedItems: updatedItems, totalPrice: updatedPrice });
   };
 
-  // --- СОХРАНЕНИЕ В ОБЛАКО ---
   const addClient = async (e) => {
     e.preventDefault();
     if (!newClient.clientName || newClient.phone.length < 18) return;
@@ -242,7 +270,6 @@ const App = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // --- УДАЛЕНИЕ ИЗ ОБЛАКА ---
   const deleteClient = async (id) => {
     try {
       await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString()));
@@ -251,7 +278,6 @@ const App = () => {
     }
   };
   
-  // --- ОБНОВЛЕНИЕ КАНБАН-СТАТУСА В ОБЛАКЕ ---
   const changeOrderStatus = async (id, newStatus) => {
     try {
       const clientToUpdate = clients.find(c => c.id === id);
@@ -263,7 +289,6 @@ const App = () => {
     }
   };
 
-  // Экспорт/Импорт остаются локальными (как резервная копия)
   const exportData = () => {
     const dataStr = JSON.stringify({ clients, catalog }, null, 2);
     const url = URL.createObjectURL(new Blob([dataStr], { type: 'application/json' }));
@@ -272,12 +297,12 @@ const App = () => {
 
   const exportCSV = () => {
     const bom = "\uFEFF";
-    let csvContent = bom + "Имя,Телефон,Близкие и Праздники,Сумма чека,VIP,Статус,Диета,Предпочтения,Индив.заказ,Детали инд.заказа,Товары\n";
+    let csvContent = bom + "Имя,Телефон,ДР Клиента,Близкие и Праздники,Сумма чека,VIP,Статус,Диета,Предпочтения,Индив.заказ,Детали инд.заказа,Товары\n";
     clients.forEach(c => {
       const itemsStr = (c.purchasedItems || []).map(i => i.name).join("; ");
       const tagsStr = c.tags ? c.tags.join("; ") : "";
       const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} ${r.phone ? `(${r.phone})` : ''} [${r.eventDate}]`).join(" | ");
-      const row = [`"${c.clientName}"`, `"${c.phone}"`, `"${relativesStr}"`, c.totalPrice, c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, `"${tagsStr}"`, `"${c.preferences || ''}"`, c.isCustomOrder ? "Да" : "Нет", `"${c.customOrderDetails || ''}"`, `"${itemsStr}"`].join(",");
+      const row = [`"${c.clientName}"`, `"${c.phone}"`, `"${c.clientBirthday || ''}"`, `"${relativesStr}"`, c.totalPrice, c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, `"${tagsStr}"`, `"${c.preferences || ''}"`, c.isCustomOrder ? "Да" : "Нет", `"${c.customOrderDetails || ''}"`, `"${itemsStr}"`].join(",");
       csvContent += row + "\n";
     });
     const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
@@ -292,7 +317,6 @@ const App = () => {
       try {
         const data = JSON.parse(e.target.result);
         const importedClients = Array.isArray(data) ? data : (data.clients || []);
-        // Массовое сохранение импортированных клиентов в облако
         for (const client of importedClients) {
            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', client.id.toString()), client);
         }
@@ -318,7 +342,7 @@ const App = () => {
   };
 
   const openWhatsAppHelper = (client) => {
-    const nearest = getNearestEvent(client.relatives);
+    const nearest = getNearestEvent(client);
     let timeText = nearest.daysLeft === 0 ? "уже сегодня" : nearest.daysLeft === 1 ? "завтра" : `через ${nearest.daysLeft} дн.`;
     let itemsText = (client.purchasedItems && client.purchasedItems.length > 0) ? `В прошлом году вы брали у нас ${client.purchasedItems[0].name.toLowerCase()}.` : "";
     const draftText = `Здравствуйте, ${client.clientName}! \nПишу вам, чтобы помочь с подготовкой: ${timeText} праздник (${nearest.name}). \n${itemsText} \nСделать для вас подборку начинок и свободных окошек на эту дату?`;
@@ -335,7 +359,7 @@ const App = () => {
     const prefStr = client.preferences ? `\n📝 Предпочтения: ${client.preferences}` : '';
     const customOrderStr = client.isCustomOrder ? `\n🎨 ИНДИВИДУАЛЬНЫЙ ЗАКАЗ:\n${client.customOrderDetails}` : '';
     const relativesList = (client.relatives || []).map(r => `  - ${r.relation} ${r.name || ''} ${r.phone ? `📞 ${r.phone}` : ''} (${getFormatDate(r.eventDate)})`).join('\n');
-    const textToCopy = `👤 Имя: ${client.clientName} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}\n📅 Праздники близких:\n${relativesList}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
+    const textToCopy = `👤 Имя: ${client.clientName} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}\n${client.clientBirthday ? `🎂 ДР Клиента: ${getFormatDate(client.clientBirthday)}\n` : ''}📅 Праздники близких:\n${relativesList || '- Нет данных -'}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
     try {
         const textArea = document.createElement("textarea"); textArea.value = textToCopy; document.body.appendChild(textArea); textArea.focus(); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea);
         setCopiedId(client.id); setTimeout(() => setCopiedId(null), 2000);
@@ -348,11 +372,27 @@ const App = () => {
     let startDay = new Date(year, month, 1).getDay() - 1;
     if (startDay === -1) startDay = 6;
     const blanks = Array.from({ length: startDay }).map((_, i) => <div key={`blank-${i}`} className="min-h-[80px]"></div>);
+    
     const days = Array.from({ length: daysInMonth }).map((_, i) => {
       const d = i + 1;
-      const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+      
+      // Ищем совпадения ТОЛЬКО по месяцу и дню (например "05-13")
+      const searchMonthDay = `${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
+      
       const eventsOnThisDay = [];
-      filteredClients.forEach(c => (c.relatives || []).forEach(rel => { if (rel.eventDate === dateStr) eventsOnThisDay.push({ client: c, rel: rel }); }));
+      filteredClients.forEach(c => {
+         // Проверяем ДР самого клиента (сравниваем конец строки)
+         if (c.clientBirthday && c.clientBirthday.endsWith(searchMonthDay)) {
+             eventsOnThisDay.push({ client: c, rel: { relation: t.myBday } });
+         }
+         // Проверяем ДР близких
+         (c.relatives || []).forEach(rel => { 
+             if (rel.eventDate && rel.eventDate.endsWith(searchMonthDay)) {
+                 eventsOnThisDay.push({ client: c, rel: rel }); 
+             }
+         });
+      });
+
       return (
         <div key={d} className={`min-h-[80px] p-2 rounded-xl border flex flex-col ${eventsOnThisDay.length > 0 ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700'}`}>
           <span className={`text-sm font-bold ${eventsOnThisDay.length > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>{d}</span>
@@ -460,6 +500,11 @@ const App = () => {
                       <input required type="text" className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none font-medium dark:text-white" value={newClient.phone} onChange={handlePhoneChange} maxLength={18} />
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">{t.clientBirthday}</label>
+                    <input type="date" className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none text-slate-700 dark:text-slate-300 font-bold" value={newClient.clientBirthday || ''} onChange={e => setNewClient({...newClient, clientBirthday: e.target.value})} />
+                  </div>
+
                   <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/50 rounded-2xl">
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input type="checkbox" className="w-5 h-5 text-rose-500 rounded focus:ring-rose-400" checked={newClient.isLoyalClient} onChange={(e) => setNewClient({...newClient, isLoyalClient: e.target.checked})} />
@@ -486,7 +531,7 @@ const App = () => {
                   <h3 className="font-bold text-lg text-pink-600 dark:text-pink-400 flex items-center gap-2"><Calendar className="w-5 h-5"/> {t.holidays}</h3>
                   {(newClient.relatives || []).map((relative, index) => (
                     <div key={relative.id} className="p-4 bg-pink-50 dark:bg-pink-900/10 border border-pink-100 dark:border-pink-900/30 rounded-2xl relative shadow-sm">
-                      {index > 0 && <button type="button" onClick={() => removeRelative(relative.id)} className="absolute top-2 right-2 text-pink-300 hover:text-red-500"><X className="w-5 h-5" /></button>}
+                      <button type="button" onClick={() => removeRelative(relative.id)} className="absolute top-2 right-2 text-pink-300 hover:text-red-500"><X className="w-5 h-5" /></button>
                       <div className="grid grid-cols-2 gap-3 mb-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">{t.whoIsEvent}</label>
@@ -579,7 +624,7 @@ const App = () => {
           {viewMode === 'list' && !showForm && (
             <div className="space-y-4 mt-8">
               {filteredClients.map(client => {
-                const nearestEvent = getNearestEvent(client.relatives);
+                const nearestEvent = getNearestEvent(client);
                 const isUrgent = nearestEvent.daysLeft >= 0 && nearestEvent.daysLeft <= 5;
 
                 return (
@@ -592,6 +637,11 @@ const App = () => {
                               {client.clientName} {client.isLoyalClient && <Star className="w-5 h-5 fill-amber-400 text-amber-400"/>}
                             </h3>
                             <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{client.phone}</p>
+                            {client.clientBirthday && (
+                               <p className="text-sm font-bold text-rose-500 dark:text-rose-400 mt-1 flex items-center gap-1">
+                                 🎂 {getFormatDate(client.clientBirthday)}
+                               </p>
+                            )}
                           </div>
                           <div className="flex flex-col items-end">
                             {isUrgent && (
@@ -610,7 +660,7 @@ const App = () => {
 
                         <div className="space-y-2 mb-4">
                           <h4 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">{t.holidays}</h4>
-                          {(client.relatives || []).map(rel => (
+                          {(client.relatives || []).length > 0 ? (client.relatives || []).map(rel => (
                             <div key={rel.id} className="bg-pink-50 dark:bg-pink-900/20 text-pink-900 dark:text-pink-300 p-3 rounded-xl border border-pink-100 dark:border-pink-900/30 flex justify-between items-center">
                               <div>
                                  <span className="font-bold text-sm">{rel.relation} {rel.name ? `(${rel.name})` : ''}</span>
@@ -619,7 +669,7 @@ const App = () => {
                               </div>
                               <span className="text-xs font-bold bg-white dark:bg-slate-800 px-2 py-1 rounded text-pink-600 dark:text-pink-400 shadow-sm">{getDaysLeft(rel.eventDate)} дн.</span>
                             </div>
-                          ))}
+                          )) : <p className="text-sm text-slate-400 dark:text-slate-500 mb-3 italic">-</p>}
                         </div>
 
                         {client.isCustomOrder && (
@@ -673,49 +723,4 @@ const App = () => {
                     {statusMap[status]} 
                     <span className="bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded-full text-xs">{filteredClients.filter(c => (c.currentOrderStatus || 'Не связались') === status).length}</span>
                   </div>
-                  <div className="p-3 flex flex-col gap-3 flex-1 min-h-[100px]">
-                    {filteredClients.filter(c => (c.currentOrderStatus || 'Не связались') === status).map(client => {
-                      const nearest = getNearestEvent(client.relatives);
-                      return (
-                        <div key={client.id} draggable onDragStart={(e) => onDragStart(e, client.id)} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-grab hover:shadow-md transition-shadow relative group">
-                          <GripHorizontal className="w-4 h-4 text-slate-300 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1">
-                            {client.clientName} {client.isLoyalClient && <Star className="w-3 h-3 fill-amber-400 text-amber-400"/>}
-                          </h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{nearest.name} — {getFormatDate(nearest.date)}</p>
-                          {client.tags && client.tags.length > 0 && (
-                             <div className="mt-2 text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded inline-block border border-red-100 dark:border-red-900/50">
-                               {client.tags[0].split(' ')[1] || 'Особенности'}
-                             </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-             </div>
-          )}
-
-          {viewMode === 'calendar' && !showForm && (
-            <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-black text-xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-rose-500" /> {t.workload}</h3>
-                <div className="flex items-center gap-4">
-                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="p-2 bg-slate-100 dark:bg-slate-700 dark:text-white rounded-lg font-black hover:bg-slate-200 dark:hover:bg-slate-600">&larr;</button>
-                  <span className="font-black w-36 text-center uppercase text-sm dark:text-white">{calendarDate.toLocaleString(lang === 'ru' ? 'ru-RU' : 'kk-KZ', { month: 'long', year: 'numeric' })}</span>
-                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="p-2 bg-slate-100 dark:bg-slate-700 dark:text-white rounded-lg font-black hover:bg-slate-200 dark:hover:bg-slate-600">&rarr;</button>
-                </div>
-              </div>
-              <div className="grid grid-cols-7 gap-2">
-                {(lang === 'ru' ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] : ['Дс', 'Сс', 'Ср', 'Бс', 'Жм', 'Сх', 'Жс']).map(d => <div key={d} className="text-center font-bold text-slate-400 py-2">{d}</div>)}
-                {renderCalendarDays()}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-export default App;
+                  <div className="
