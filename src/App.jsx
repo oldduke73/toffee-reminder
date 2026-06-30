@@ -62,7 +62,6 @@ const translations = {
   }
 };
 
-// Идеальная функция для дней рождения: игнорирует год рождения, считает только дни до ближайшей даты (в этом или следующем году).
 const getDaysLeft = (dateString) => {
   if (!dateString) return 999;
   const parts = dateString.split('-');
@@ -72,15 +71,12 @@ const getDaysLeft = (dateString) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Создаем событие в ТЕКУЩЕМ году, игнорируя год рождения
   let nextEvent = new Date(today.getFullYear(), m - 1, d);
   
-  // Если дата в этом году уже прошла, значит праздник будет в СЛЕДУЮЩЕМ году
   if (nextEvent < today) {
     nextEvent.setFullYear(today.getFullYear() + 1);
   }
   
-  // Считаем разницу в днях
   return Math.ceil((nextEvent - today) / (1000 * 60 * 60 * 24));
 };
 
@@ -105,6 +101,7 @@ const App = () => {
     "Корпусный кокос", "Корпусный манго", "Корпусный малина", "Корпусный черника", 
     "Корпусный круассан", "Бенто торт", "Фрезье", "Минидесерты", "Меренговый рулет"
   ];
+  
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
 
@@ -120,7 +117,6 @@ const App = () => {
   
   const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
 
-  // Обновленный стейт клиента с полем clientBirthday
   const initialNewClientState = { 
     clientName: '', phone: '+7 ', clientBirthday: '', isLoyalClient: false, tags: [], preferences: '',
     relatives: [{ id: Date.now(), relation: 'Себе', name: '', phone: '', eventDate: '', eventType: 'День рождения' }],
@@ -132,7 +128,6 @@ const App = () => {
   const getNearestEvent = (client) => {
     let allEvents = [];
     
-    // Добавляем день рождения самого клиента в общий список проверок
     if (client.clientBirthday) {
         allEvents.push({ 
             eventDate: client.clientBirthday, 
@@ -141,7 +136,6 @@ const App = () => {
         });
     }
     
-    // Добавляем дни рождения родственников
     (client.relatives || []).forEach(rel => {
         if (rel.eventDate) allEvents.push(rel);
     });
@@ -299,6 +293,55 @@ const App = () => {
   const onDragOver = (e) => e.preventDefault();
   const onDrop = (e, targetStatus) => { changeOrderStatus(e.dataTransfer.getData('clientId'), targetStatus); };
 
+  const renderCalendarDays = () => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let startDay = new Date(year, month, 1).getDay() - 1;
+    if (startDay === -1) startDay = 6;
+    
+    const blanks = Array.from({ length: startDay }).map((_, i) => <div key={`blank-${i}`} className="min-h-[80px]"></div>);
+    
+    const days = Array.from({ length: daysInMonth }).map((_, i) => {
+      const d = i + 1;
+      const eventsOnThisDay = [];
+      
+      // Ищем совпадения по дням рождения в текущем месяце
+      filteredClients.forEach(c => {
+         // Проверяем день рождения самого клиента
+         if (c.clientBirthday) {
+             const parts = c.clientBirthday.split('-');
+             if (parts.length === 3 && parseInt(parts[1]) === month + 1 && parseInt(parts[2]) === d) {
+                 eventsOnThisDay.push({ client: c, rel: { relation: lang === 'ru' ? 'День рождения' : 'Туған күн', name: c.clientName } });
+             }
+         }
+         // Проверяем праздники близких
+         (c.relatives || []).forEach(rel => {
+           if (rel.eventDate) {
+             const parts = rel.eventDate.split('-');
+             if (parts.length === 3 && parseInt(parts[1]) === month + 1 && parseInt(parts[2]) === d) {
+                 eventsOnThisDay.push({ client: c, rel: rel });
+             }
+           }
+         });
+      });
+      
+      return (
+        <div key={d} className={`min-h-[80px] p-2 rounded-xl border flex flex-col ${eventsOnThisDay.length > 0 ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700'}`}>
+          <span className={`text-sm font-bold ${eventsOnThisDay.length > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>{d}</span>
+          <div className="mt-1 flex flex-col gap-1">
+            {eventsOnThisDay.map((e, idx) => (
+              <div key={idx} onClick={() => editClientClick(e.client)} className="text-[10px] font-bold text-white bg-rose-500 rounded px-1.5 py-1 truncate cursor-pointer hover:bg-rose-600 shadow-sm" title={`${e.client.clientName} (${e.rel.relation})`}>
+                {e.client.clientName}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    });
+    return [...blanks, ...days];
+  };
+
   return (
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
@@ -380,7 +423,6 @@ const App = () => {
                     </div>
                   </div>
                   
-                  {/* Новое поле: День рождения клиента */}
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase">{t.clientBirthday}</label>
                       <input type="date" className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none font-medium dark:text-white" value={newClient.clientBirthday || ''} onChange={e => setNewClient({...newClient, clientBirthday: e.target.value})} />
@@ -521,7 +563,6 @@ const App = () => {
                         <div className="space-y-2 mb-4">
                           <h4 className="text-xs font-bold text-slate-400 uppercase">{t.holidays}</h4>
                           
-                          {/* Вывод дня рождения самого клиента */}
                           {client.clientBirthday && (
                               <div className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-900 dark:text-indigo-300 p-3 rounded-xl border border-indigo-100 flex justify-between items-center">
                                 <div>
@@ -532,7 +573,6 @@ const App = () => {
                               </div>
                           )}
 
-                          {/* Вывод праздников родственников */}
                           {(client.relatives || []).map(rel => (
                             <div key={rel.id} className="bg-pink-50 dark:bg-pink-900/20 text-pink-900 dark:text-pink-300 p-3 rounded-xl border border-pink-100 flex justify-between items-center">
                               <div>
@@ -600,13 +640,30 @@ const App = () => {
           )}
 
           {}
+          {viewMode === 'calendar' && !showForm && (
+            <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 animate-in fade-in">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-black text-xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-rose-500" /> {t.workload}</h3>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="p-2 bg-slate-100 dark:bg-slate-700 dark:text-white rounded-lg font-black hover:bg-slate-200 dark:hover:bg-slate-600">&larr;</button>
+                  <span className="font-black w-36 text-center uppercase text-sm dark:text-white">{calendarDate.toLocaleString(lang === 'ru' ? 'ru-RU' : 'kk-KZ', { month: 'long', year: 'numeric' })}</span>
+                  <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="p-2 bg-slate-100 dark:bg-slate-700 dark:text-white rounded-lg font-black hover:bg-slate-200 dark:hover:bg-slate-600">&rarr;</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 gap-2">
+                {(lang === 'ru' ? ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] : ['Дс', 'Сс', 'Ср', 'Бс', 'Жм', 'Сх', 'Жс']).map(d => <div key={d} className="text-center font-bold text-slate-400 py-2">{d}</div>)}
+                {renderCalendarDays()}
+              </div>
+            </div>
+          )}
+
+          {}
           {whatsappHelper.show && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl w-full max-w-md shadow-2xl">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-black text-xl text-slate-800 dark:text-white">{t.msg}</h3>
                         <div className="flex gap-2">
-                           {/* Кнопка превью для WhatsApp сообщения */}
                            <button onClick={() => setShowDraftPreview(!showDraftPreview)} className={`p-2 rounded-lg transition-colors ${showDraftPreview ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`} title={t.preview}>
                              <Eye size={20} />
                            </button>
@@ -621,7 +678,6 @@ const App = () => {
                        onChange={(e) => setWhatsappHelper({...whatsappHelper, draftText: e.target.value})}
                     />
 
-                    {/* Окно превью */}
                     {showDraftPreview && (
                         <div className="mb-4 bg-[#E1FDD7] dark:bg-[#005c4b] p-4 rounded-2xl rounded-tr-none shadow-sm relative text-sm text-[#111b21] dark:text-white whitespace-pre-wrap">
                             <span className="font-bold block mb-1">Предпросмотр:</span>
