@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Calendar, Phone, MessageCircle, ShoppingBag, User, AlertCircle, Check, Copy, X, Star, Download, Upload, Search, Edit3, FileSpreadsheet, Kanban, List, GripHorizontal, CheckSquare, Info, Sun, Moon, Globe, Cloud, CloudOff, Eye } from 'lucide-react';
+import { Plus, Trash2, Calendar, Phone, MessageCircle, ShoppingBag, User, AlertCircle, Check, Copy, X, Star, Download, Upload, Search, Edit3, FileSpreadsheet, Kanban, List, GripHorizontal, Info, Sun, Moon, Globe, Cloud, CloudOff, Eye } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -73,10 +73,10 @@ const getDaysLeft = (dateString) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Игнорируем год рождения, смотрим только на день и месяц в текущем году
+  // Игнорируем год рождения. Устанавливаем праздник на текущий год
   let nextEvent = new Date(today.getFullYear(), m - 1, d);
   
-  // Если дата уже прошла в этом году, значит праздник будет в следующем году
+  // Если эта дата в этом году уже прошла, значит следующий праздник будет в следующем году
   if (nextEvent < today) {
     nextEvent.setFullYear(today.getFullYear() + 1);
   }
@@ -96,41 +96,17 @@ const App = () => {
   const [theme, setTheme] = useState('light');
   const t = translations[lang];
 
-  // ЖЕСТКО ВШИТЫЙ КАТАЛОГ ИЗ ВАШЕГО JSON ФАЙЛА
+  // Полный каталог из вашего последнего списка
   const initialCatalog = [
-    "МОЛОЧНАЯ ДЕВОЧКА",
-    "ШОКОЛАДНЫЙ ПЛОМБИР",
-    "СНИКЕРС",
-    "НУТЕЛЛА",
-    "НАПОЛЕОН",
-    "МЕДОВИК",
-    "ЧИЗКЕЙК ИСПАНСКИЙ",
-    "ПИРОГ 23СМ",
-    "ПИРОГ 18СМ",
-    "ТРАЙФЛ",
-    "МОТИ",
-    "ЭКЛЕР",
-    "МИНИ ИСПАНСКИЙ",
-    "МАКАРОНС",
-    "КРУАССАН КУРИНЫЙ",
-    "КРУАССАН СЕМГА",
-    "КРУАССАН НУТЕЛЛА",
-    "КРУАССАН ФИСТАШКА",
-    "КРУАССАН КЛУБНИКА",
-    "КРУАССАН ОРЕО",
-    "КРУАССАН СЫР",
-    "КРУАССАН КЛАССИКА",
-    "КОРПУСНЫЙ ФИСТАШКА",
-    "КОРПУСНЫЙ КОКОС",
-    "КОРПУСНЫЙ МАНГО",
-    "КОРПУСНЫЙ МАЛИНА",
-    "КОРПУСНЫЙ ЧЕРНИКА",
-    "КОРПУСНЫЙ КРУАССАН",
-    "БЕНТО ТОРТ",
-    "ФРЕЗЬЕ",
-    "МИНИДЕСЕРТЫ",
-    "МЕРЕНГОВЫЙ РУЛЕТ"
+    "МОЛОЧНАЯ ДЕВОЧКА", "ШОКОЛАДНЫЙ ПЛОМБИР", "СНИКЕРС", "НУТЕЛЛА", "НАПОЛЕОН", 
+    "МЕДОВИК", "ЧИЗКЕЙК ИСПАНСКИЙ", "ПИРОГ 23СМ", "ПИРОГ 18СМ", "ТРАЙФЛ", 
+    "МОТИ", "ЭКЛЕР", "МИНИ ИСПАНСКИЙ", "МАКАРОНС", "КРУАССАН КУРИНЫЙ", 
+    "КРУАССАН СЕМГА", "КРУАССАН НУТЕЛЛА", "КРУАССАН ФИСТАШКА", "КРУАССАН КЛУБНИКА", 
+    "КРУАССАН ОРЕО", "КРУАССАН СЫР", "КРУАССАН КЛАССИКА", "КОРПУСНЫЙ ФИСТАШКА", 
+    "КОРПУСНЫЙ КОКОС", "КОРПУСНЫЙ МАНГО", "КОРПУСНЫЙ МАЛИНА", "КОРПУСНЫЙ ЧЕРНИКА", 
+    "КОРПУСНЫЙ КРУАССАН", "БЕНТО ТОРТ", "ФРЕЗЬЕ", "МИНИДЕСЕРТЫ", "МЕРЕНГОВЫЙ РУЛЕТ"
   ];
+  
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
 
@@ -304,25 +280,57 @@ const App = () => {
     const link = document.createElement('a'); link.href = url; link.download = `toffee_clients_excel_${new Date().toLocaleDateString('ru-RU')}.csv`; link.click(); URL.revokeObjectURL(url);
   };
 
-  // ОБНОВЛЕННАЯ ЗАГРУЗКА ИЗ JSON: Не ломается и загружает каталог, если клиентов нет
   const importData = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const data = JSON.parse(e.target.result);
-        const importedClients = Array.isArray(data) ? data : (data.clients || []);
+        const text = e.target.result;
         
-        for (const client of importedClients) {
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', client.id.toString()), client);
+        // Логика чтения CSV (Excel)
+        if (file.name.toLowerCase().endsWith('.csv')) {
+           const lines = text.split('\n').filter(line => line.trim() !== '');
+           if (lines.length > 1) {
+              const parseCSVRow = (str) => {
+                  let result = []; let inQuotes = false; let current = '';
+                  for (let i = 0; i < str.length; i++) {
+                      if (str[i] === '"') { inQuotes = !inQuotes; }
+                      else if (str[i] === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+                      else { current += str[i]; }
+                  }
+                  result.push(current.trim()); return result;
+              };
+
+              for (let i = 1; i < lines.length; i++) {
+                 const cleanRow = parseCSVRow(lines[i]);
+                 if (cleanRow.length >= 2 && cleanRow[0]) {
+                    const newClient = {
+                       id: Date.now().toString() + i + Math.floor(Math.random()*1000),
+                       clientName: cleanRow[0] || 'Без имени', phone: cleanRow[1] || '',
+                       clientBirthday: cleanRow[2] || '', isLoyalClient: cleanRow[3] === 'Да',
+                       currentOrderStatus: cleanRow[4] || 'Не связались', totalPrice: Number(cleanRow[5]) || 0,
+                       tags: cleanRow[6] ? cleanRow[6].split('; ') : [], preferences: cleanRow[7] || '',
+                       relatives: [], purchasedItems: cleanRow[9] ? cleanRow[9].split('; ').map(name => ({uniqueId: Date.now()+Math.random(), name, price: 0})) : [],
+                       isCustomOrder: cleanRow[10] && cleanRow[10].length > 0, customOrderDetails: cleanRow[10] || ''
+                    };
+                    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClient.id.toString()), newClient);
+                 }
+              }
+           }
+        } 
+        // Логика чтения JSON
+        else {
+            const data = JSON.parse(text);
+            const importedClients = Array.isArray(data) ? data : (data.clients || []);
+            for (const client of importedClients) {
+              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', client.id.toString()), client);
+            }
+            if (data.catalog && Array.isArray(data.catalog)) {
+               await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: data.catalog });
+               setCatalog(data.catalog);
+            }
         }
-        
-        if (data.catalog && Array.isArray(data.catalog)) {
-           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: data.catalog });
-           setCatalog(data.catalog);
-        }
-        
       } catch (error) { console.error('Ошибка импорта', error); }
     };
     reader.readAsText(file);
@@ -420,7 +428,8 @@ const App = () => {
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
         
-        <input type="file" ref={fileInputRef} onChange={importData} accept=".json" className="hidden" />
+        {/* Улучшенный инпут для импорта принимает JSON и CSV */}
+        <input type="file" ref={fileInputRef} onChange={importData} accept=".json, .csv" className="hidden" />
 
         <div className="bg-gradient-to-r from-rose-500 to-pink-600 dark:from-rose-900 dark:to-pink-900 rounded-b-[40px] shadow-xl p-8 pt-12 relative overflow-hidden transition-colors duration-300">
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4 max-w-7xl mx-auto">
@@ -461,10 +470,10 @@ const App = () => {
               </div>
               
               <div className="flex gap-2 justify-center">
-                <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Загрузить JSON">
+                <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Загрузить JSON или CSV">
                   <Upload className="w-4 h-4" /> {t.import}
                 </button>
-                <button onClick={exportData} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать JSON">
+                <button onClick={exportData} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать резервную копию">
                   <Download className="w-4 h-4" /> JSON
                 </button>
                 <button onClick={exportCSV} className="bg-[#107c41] hover:bg-[#188c4d] text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать базу в формате Excel (CSV)">
