@@ -73,10 +73,7 @@ const getDaysLeft = (dateString) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Игнорируем год рождения. Устанавливаем праздник на текущий год
   let nextEvent = new Date(today.getFullYear(), m - 1, d);
-  
-  // Если эта дата в этом году уже прошла, значит следующий праздник будет в следующем году
   if (nextEvent < today) {
     nextEvent.setFullYear(today.getFullYear() + 1);
   }
@@ -96,7 +93,6 @@ const App = () => {
   const [theme, setTheme] = useState('light');
   const t = translations[lang];
 
-  // Полный каталог из вашего последнего списка
   const initialCatalog = [
     "МОЛОЧНАЯ ДЕВОЧКА", "ШОКОЛАДНЫЙ ПЛОМБИР", "СНИКЕРС", "НУТЕЛЛА", "НАПОЛЕОН", 
     "МЕДОВИК", "ЧИЗКЕЙК ИСПАНСКИЙ", "ПИРОГ 23СМ", "ПИРОГ 18СМ", "ТРАЙФЛ", 
@@ -157,18 +153,10 @@ const App = () => {
 
   const getNearestEvent = (client) => {
     let allEvents = [];
-    
     if (client.clientBirthday) {
-        allEvents.push({ 
-            eventDate: client.clientBirthday, 
-            relation: lang === 'ru' ? 'День рождения клиента' : 'Клиенттің туған күні', 
-            name: client.clientName 
-        });
+        allEvents.push({ eventDate: client.clientBirthday, relation: lang === 'ru' ? 'День рождения клиента' : 'Клиенттің туған күні', name: client.clientName });
     }
-    
-    (client.relatives || []).forEach(rel => {
-        if (rel.eventDate) allEvents.push(rel);
-    });
+    (client.relatives || []).forEach(rel => { if (rel.eventDate) allEvents.push(rel); });
     
     if (allEvents.length === 0) return { daysLeft: 999, date: null, name: '' };
 
@@ -176,11 +164,7 @@ const App = () => {
     allEvents.forEach(e => {
         const days = getDaysLeft(e.eventDate);
         if (days >= 0 && days < nearest.daysLeft) {
-            nearest = { 
-                daysLeft: days, 
-                date: e.eventDate, 
-                name: e.relation + (e.name && e.relation !== 'День рождения клиента' && e.relation !== 'Клиенттің туған күні' ? ` (${e.name})` : '') 
-            };
+            nearest = { daysLeft: days, date: e.eventDate, name: e.relation + (e.name && e.relation !== 'День рождения клиента' && e.relation !== 'Клиенттің туған күні' ? ` (${e.name})` : '') };
         }
     });
     return nearest;
@@ -288,7 +272,6 @@ const App = () => {
       try {
         const text = e.target.result;
         
-        // Логика чтения CSV (Excel)
         if (file.name.toLowerCase().endsWith('.csv')) {
            const lines = text.split('\n').filter(line => line.trim() !== '');
            if (lines.length > 1) {
@@ -305,26 +288,53 @@ const App = () => {
               for (let i = 1; i < lines.length; i++) {
                  const cleanRow = parseCSVRow(lines[i]);
                  if (cleanRow.length >= 2 && cleanRow[0]) {
+                    // НАДЕЖНАЯ ЗАЩИТА: Заменяем пустые/неопределенные поля на дефолтные
+                    const safeName = cleanRow[0] ? cleanRow[0].replace(/"/g, '') : 'Без имени';
+                    const safePhone = cleanRow[1] ? cleanRow[1].replace(/"/g, '') : '';
+                    const safeBday = cleanRow[2] ? cleanRow[2].replace(/"/g, '') : '';
+                    const safeVip = cleanRow[3] === 'Да' || cleanRow[3] === '"Да"';
+                    const safeStatus = cleanRow[4] ? cleanRow[4].replace(/"/g, '') : 'Не связались';
+                    const safePrice = Number(cleanRow[5]) || 0;
+                    const safeTags = cleanRow[6] ? cleanRow[6].replace(/"/g, '').split('; ').filter(t=>t) : [];
+                    const safePref = cleanRow[7] ? cleanRow[7].replace(/"/g, '') : '';
+                    const safeItems = cleanRow[9] ? cleanRow[9].replace(/"/g, '').split('; ').filter(n=>n).map(name => ({uniqueId: Date.now()+Math.random(), name: name.trim(), price: 0})) : [];
+                    
+                    // Жесткая проверка для Булевых значений и Текста
+                    const safeIsCustomOrder = cleanRow[10] ? Boolean(cleanRow[10].replace(/"/g, '').trim().length > 0) : false;
+                    const safeCustomDetails = cleanRow[10] ? String(cleanRow[10].replace(/"/g, '').trim()) : "";
+
                     const newClient = {
                        id: Date.now().toString() + i + Math.floor(Math.random()*1000),
-                       clientName: cleanRow[0] || 'Без имени', phone: cleanRow[1] || '',
-                       clientBirthday: cleanRow[2] || '', isLoyalClient: cleanRow[3] === 'Да',
-                       currentOrderStatus: cleanRow[4] || 'Не связались', totalPrice: Number(cleanRow[5]) || 0,
-                       tags: cleanRow[6] ? cleanRow[6].split('; ') : [], preferences: cleanRow[7] || '',
-                       relatives: [], purchasedItems: cleanRow[9] ? cleanRow[9].split('; ').map(name => ({uniqueId: Date.now()+Math.random(), name, price: 0})) : [],
-                       isCustomOrder: cleanRow[10] && cleanRow[10].length > 0, customOrderDetails: cleanRow[10] || ''
+                       clientName: safeName, 
+                       phone: safePhone,
+                       clientBirthday: safeBday, 
+                       isLoyalClient: safeVip,
+                       currentOrderStatus: safeStatus, 
+                       totalPrice: safePrice,
+                       tags: safeTags, 
+                       preferences: safePref,
+                       relatives: [], 
+                       purchasedItems: safeItems,
+                       isCustomOrder: safeIsCustomOrder, 
+                       customOrderDetails: safeCustomDetails
                     };
+                    
+                    console.log("Успешно подготовлен к загрузке:", safeName);
                     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClient.id.toString()), newClient);
                  }
               }
            }
         } 
-        // Логика чтения JSON
         else {
             const data = JSON.parse(text);
             const importedClients = Array.isArray(data) ? data : (data.clients || []);
             for (const client of importedClients) {
-              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', client.id.toString()), client);
+              const safeClient = {
+                 ...client,
+                 isCustomOrder: client.isCustomOrder || false,
+                 customOrderDetails: client.customOrderDetails || ""
+              };
+              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', safeClient.id.toString()), safeClient);
             }
             if (data.catalog && Array.isArray(data.catalog)) {
                await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: data.catalog });
@@ -333,7 +343,7 @@ const App = () => {
         }
       } catch (error) { console.error('Ошибка импорта', error); }
     };
-    reader.readAsText(file);
+    reader.readAsText(file); // Читаем в UTF-8
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -484,6 +494,7 @@ const App = () => {
           </div>
         </div>
 
+        {}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-[-20px] relative z-20">
           {!showForm && (
             <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -749,6 +760,7 @@ const App = () => {
             </div>
           )}
 
+          {}
           {whatsappHelper.show && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl w-full max-w-md shadow-2xl">
