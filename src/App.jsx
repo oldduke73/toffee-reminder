@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Calendar, Phone, MessageCircle, ShoppingBag, User, AlertCircle, Check, Copy, X, Star, Download, Upload, Search, Edit3, FileSpreadsheet, Kanban, List, GripHorizontal, Eye, Info, Sun, Moon, Globe, Cloud, CloudOff } from 'lucide-react';
+import { Plus, Trash2, Calendar, Phone, MessageCircle, ShoppingBag, User, AlertCircle, Check, Copy, X, Star, Download, Upload, Search, Edit3, FileSpreadsheet, Kanban, List, GripHorizontal, CheckSquare, Info, Sun, Moon, Globe, Cloud, CloudOff, Eye } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -32,12 +32,13 @@ const translations = {
     hint: 'Начните вводить или выберите из списка. Если впишете новое название, оно добавится в каталог автоматически.',
     isCustom: '🎨 Это индивидуальный заказ (сложный дизайн)', customDetails: 'Опишите детали заказа: тематика, ярусы, референсы, фигурки, надпись...',
     totalCheck: 'Итого по чеку:', saveChanges: 'СОХРАНИТЬ ИЗМЕНЕНИЯ', addClientBtn: 'ДОБАВИТЬ КЛИЕНТА В БАЗУ',
-    msg: 'Сообщение', editDraft: 'Отредактируйте черновик перед отправкой', sendWa: 'Отправить в WhatsApp',
-    preview: 'Предпросмотр сообщения', today: 'СЕГОДНЯ!', inDays: (d) => `Через ${d} дн.`,
+    msg: 'Сообщение', editDraft: 'Отредактируйте черновик перед отправкой', sendWa: 'Отправить в WhatsApp', preview: 'Предпросмотр сообщения',
+    tips: 'Советы:', tip1: 'Польза, а не спам. Не пишите "у нас акция". Пишите "решил помочь с выбором".',
+    tip2: 'Покажите заботу. Упоминание прошлого заказа показывает, что клиент важен.', tip3: 'Один вопрос. Закройте текст простым вопросом.',
     workload: 'Загруженность по дням', noHistory: 'Нет истории покупок', receipt: 'Заказ / Чек', sum: 'Сумма:',
-    write: 'Написать', copy: 'Копировать', copied: 'Скопировано',
-    customDetailsTitle: 'Индивидуальный заказ:',
-    relationOptions: ['Себе', 'Жене', 'Мужу', 'Сыну', 'Дочери', 'Маме', 'Папе', 'Брату', 'Сестре', 'Другу', 'Коллеге'],
+    write: 'Написать', copy: 'Копировать', copied: 'Скопировано', today: 'СЕГОДНЯ!', inDays: (d) => `Через ${d} дн.`,
+    customDetailsTitle: 'Индивидуальный заказ (Детали):',
+    relationOptions: ['Себе', 'Жене', 'Мужу', 'Сыну', 'Дочери', 'Маме', 'Папе', 'Брату', 'Сестре', 'Другу', 'Другу семьи', 'Коллеге', 'Родственнику'],
     eventOptions: ['День рождения', 'Годовщина', 'Юбилей', 'Другое']
   },
   kz: {
@@ -52,12 +53,13 @@ const translations = {
     hint: 'Енгізуді бастаңыз немесе тізімнен таңдаңыз. Жаңа атау жазсаңыз, ол каталогқа автоматты қосылады.',
     isCustom: '🎨 Бұл жеке тапсырыс (күрделі дизайн)', customDetails: 'Тапсырыс мәліметтерін сипаттаңыз: тақырып, қабаттар, фигуралар, жазу...',
     totalCheck: 'Чек бойынша барлығы:', saveChanges: 'ӨЗГЕРІСТЕРДІ САҚТАУ', addClientBtn: 'КЛИЕНТТІ БАЗАҒА ҚОСУ',
-    msg: 'Хабарлама', editDraft: 'Жібермес бұрын мәтінді өңдеңіз', sendWa: 'WhatsApp-қа жіберу',
-    preview: 'Алдын ала көру', today: 'БҮГІН!', inDays: (d) => `${d} күннен кейін`,
+    msg: 'Хабарлама', editDraft: 'Жібермес бұрын мәтінді өңдеңіз', sendWa: 'WhatsApp-қа жіберу', preview: 'Алдын ала көру',
+    tips: 'Кеңестер:', tip1: 'Спам емес, пайда әкеліңіз. "Бізде акция" деп жазбаңыз. "Таңдауға көмектесейін" деп жазыңыз.',
+    tip2: 'Қамқорлық көрсетіңіз. Өткен тапсырысты еске алу клиенттің маңыздылығын көрсетеді.', tip3: 'Бір сұрақ. Мәтінді қарапайым сұрақпен аяқтаңыз.',
     workload: 'Күндер бойынша жүктеме', noHistory: 'Сатып алу тарихы жоқ', receipt: 'Тапсырыс / Чек', sum: 'Сомасы:',
-    write: 'Жазу', copy: 'Көшіру', copied: 'Көшірілді',
-    customDetailsTitle: 'Жеке тапсырыс:',
-    relationOptions: ['Өзіме', 'Әйеліме', 'Күйеуіме', 'Ұлыма', 'Қызыма', 'Анама', 'Әкеме', 'Ағама/Ініме', 'Әпкеме/Қарындасыма', 'Досыма', 'Әріптесіме'],
+    write: 'Жазу', copy: 'Көшіру', copied: 'Көшірілді', today: 'БҮГІН!', inDays: (d) => `${d} күннен кейін`,
+    customDetailsTitle: 'Жеке тапсырыс (Мәліметтер):',
+    relationOptions: ['Өзіме', 'Әйеліме', 'Күйеуіме', 'Ұлыма', 'Қызыма', 'Анама', 'Әкеме', 'Ағама/Ініме', 'Әпкеме/Қарындасыма', 'Досыма', 'Отбасы досына', 'Әріптесіме', 'Туысыма'],
     eventOptions: ['Туған күн', 'Мерейтой (Годовщина)', 'Мерейтой (Юбилей)', 'Басқа']
   }
 };
@@ -71,10 +73,10 @@ const getDaysLeft = (dateString) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Игнорируем год, смотрим только на день и месяц в текущем году
+  // Игнорируем год рождения, смотрим только на день и месяц в текущем году
   let nextEvent = new Date(today.getFullYear(), m - 1, d);
   
-  // Если дата уже прошла в этом году, значит праздник будет в следующем
+  // Если дата уже прошла в этом году, значит праздник будет в следующем году
   if (nextEvent < today) {
     nextEvent.setFullYear(today.getFullYear() + 1);
   }
@@ -94,78 +96,47 @@ const App = () => {
   const [theme, setTheme] = useState('light');
   const t = translations[lang];
 
-  // Полный каталог из изображения пользователя
+  // ЖЕСТКО ВШИТЫЙ КАТАЛОГ ИЗ ВАШЕГО JSON ФАЙЛА
   const initialCatalog = [
-    "МОЛОЧНАЯ ДЕВОЧКА", "ШОКОЛАДНЫЙ ПЛОМБИР", "СНИКЕРС", "НУТЕЛЛА", "НАПОЛЕОН", 
-    "МЕДОВИК", "ЧИЗКЕЙК ИСПАНСКИЙ", "ПИРОГ 23СМ", "ПИРОГ 18СМ", "ТРАЙФЛ", 
-    "МОТИ", "ЭКЛЕР", "МИНИ ИСПАНСКИЙ", "МАКАРОНС", "КРУАССАН КУРИНЫЙ", 
-    "КРУАССАН СЕМГА", "КРУАССАН НУТЕЛЛА", "КРУАССАН ФИСТАШКА", "КРУАССАН КЛУБНИКА", 
-    "КРУАССАН ОРЕО", "КРУАССАН СЫР", "КРУАССАН КЛАССИКА", "КОРПУСНЫЙ ФИСТАШКА", 
-    "КОРПУСНЫЙ КОКОС", "КОРПУСНЫЙ МАНГО", "КОРПУСНЫЙ МАЛИНА", "КОРПУСНЫЙ ЧЕРНИКА", 
-    "КОРПУСНЫЙ КРУАССАН", "БЕНТО ТОРТ", "ФРЕЗЬЕ", "МИНИДЕСЕРТЫ", "МЕРЕНГОВЫЙ РУЛЕТ"
+    "МОЛОЧНАЯ ДЕВОЧКА",
+    "ШОКОЛАДНЫЙ ПЛОМБИР",
+    "СНИКЕРС",
+    "НУТЕЛЛА",
+    "НАПОЛЕОН",
+    "МЕДОВИК",
+    "ЧИЗКЕЙК ИСПАНСКИЙ",
+    "ПИРОГ 23СМ",
+    "ПИРОГ 18СМ",
+    "ТРАЙФЛ",
+    "МОТИ",
+    "ЭКЛЕР",
+    "МИНИ ИСПАНСКИЙ",
+    "МАКАРОНС",
+    "КРУАССАН КУРИНЫЙ",
+    "КРУАССАН СЕМГА",
+    "КРУАССАН НУТЕЛЛА",
+    "КРУАССАН ФИСТАШКА",
+    "КРУАССАН КЛУБНИКА",
+    "КРУАССАН ОРЕО",
+    "КРУАССАН СЫР",
+    "КРУАССАН КЛАССИКА",
+    "КОРПУСНЫЙ ФИСТАШКА",
+    "КОРПУСНЫЙ КОКОС",
+    "КОРПУСНЫЙ МАНГО",
+    "КОРПУСНЫЙ МАЛИНА",
+    "КОРПУСНЫЙ ЧЕРНИКА",
+    "КОРПУСНЫЙ КРУАССАН",
+    "БЕНТО ТОРТ",
+    "ФРЕЗЬЕ",
+    "МИНИДЕСЕРТЫ",
+    "МЕРЕНГОВЫЙ РУЛЕТ"
   ];
-  
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
 
-  const [showForm, setShowForm] = useState(false);
-  const [copiedId, setCopiedId] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [editingId, setEditingId] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); 
-  const [whatsappHelper, setWhatsappHelper] = useState({ show: false, client: null, draftText: '' });
-  const [showDraftPreview, setShowDraftPreview] = useState(false);
-  const [calendarDate, setCalendarDate] = useState(new Date());
-  const [orderInput, setOrderInput] = useState({ name: '', price: '' });
-  
-  const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
-
-  const initialNewClientState = { 
-    clientName: '', phone: '+7 ', clientBirthday: '', isLoyalClient: false, tags: [], preferences: '',
-    relatives: [{ id: Date.now(), relation: 'Себе', name: '', phone: '', eventDate: '', eventType: 'День рождения' }],
-    isCustomOrder: false, customOrderDetails: '', purchasedItems: [], totalPrice: 0, currentOrderStatus: 'Не связались'
-  };
-  const [newClient, setNewClient] = useState(initialNewClientState);
-  
-  // Ссылка для скрытого поля загрузки файлов (Импорт)
-  const fileInputRef = useRef(null);
-
-  const getNearestEvent = (client) => {
-    let allEvents = [];
-    
-    // Добавляем день рождения самого клиента
-    if (client.clientBirthday) {
-        allEvents.push({ 
-            eventDate: client.clientBirthday, 
-            relation: lang === 'ru' ? 'День рождения клиента' : 'Клиенттің туған күні', 
-            name: client.clientName 
-        });
-    }
-    
-    // Добавляем праздники близких
-    (client.relatives || []).forEach(rel => {
-        if (rel.eventDate) allEvents.push(rel);
-    });
-    
-    if (allEvents.length === 0) return { daysLeft: 999, date: null, name: '' };
-
-    let nearest = { daysLeft: 999, date: null, name: '' };
-    allEvents.forEach(e => {
-        const days = getDaysLeft(e.eventDate);
-        if (days >= 0 && days < nearest.daysLeft) {
-            nearest = { 
-                daysLeft: days, 
-                date: e.eventDate, 
-                name: e.relation + (e.name && e.relation !== 'День рождения клиента' && e.relation !== 'Клиенттің туған күні' ? ` (${e.name})` : '') 
-            };
-        }
-    });
-    return nearest;
-  };
-
   useEffect(() => {
     const initAuth = async () => {
-      try { await signInAnonymously(auth); } catch (e) { console.error("Firebase auth error", e); }
+      try { await signInAnonymously(auth); } catch (e) { console.error("Ошибка авторизации", e); }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, setUser);
@@ -187,6 +158,57 @@ const App = () => {
 
     return () => { unsubscribeClients(); unsubscribeCatalog(); };
   }, [user]);
+
+  const [showForm, setShowForm] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [viewMode, setViewMode] = useState('list'); 
+  const [whatsappHelper, setWhatsappHelper] = useState({ show: false, client: null, draftText: '' });
+  const [showDraftPreview, setShowDraftPreview] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [orderInput, setOrderInput] = useState({ name: '', price: '' });
+  
+  const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
+
+  const initialNewClientState = { 
+    clientName: '', phone: '+7 ', clientBirthday: '', isLoyalClient: false, tags: [], preferences: '',
+    relatives: [{ id: Date.now(), relation: 'Себе', name: '', phone: '', eventDate: '', eventType: 'День рождения' }],
+    isCustomOrder: false, customOrderDetails: '', purchasedItems: [], totalPrice: 0, currentOrderStatus: 'Не связались'
+  };
+  const [newClient, setNewClient] = useState(initialNewClientState);
+  const fileInputRef = useRef(null);
+
+  const getNearestEvent = (client) => {
+    let allEvents = [];
+    
+    if (client.clientBirthday) {
+        allEvents.push({ 
+            eventDate: client.clientBirthday, 
+            relation: lang === 'ru' ? 'День рождения клиента' : 'Клиенттің туған күні', 
+            name: client.clientName 
+        });
+    }
+    
+    (client.relatives || []).forEach(rel => {
+        if (rel.eventDate) allEvents.push(rel);
+    });
+    
+    if (allEvents.length === 0) return { daysLeft: 999, date: null, name: '' };
+
+    let nearest = { daysLeft: 999, date: null, name: '' };
+    allEvents.forEach(e => {
+        const days = getDaysLeft(e.eventDate);
+        if (days >= 0 && days < nearest.daysLeft) {
+            nearest = { 
+                daysLeft: days, 
+                date: e.eventDate, 
+                name: e.relation + (e.name && e.relation !== 'День рождения клиента' && e.relation !== 'Клиенттің туған күні' ? ` (${e.name})` : '') 
+            };
+        }
+    });
+    return nearest;
+  };
 
   const totalSales = clients.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
   const filteredClients = clients.filter(c => c.clientName.toLowerCase().includes(searchQuery.toLowerCase()) || c.phone.includes(searchQuery));
@@ -242,7 +264,7 @@ const App = () => {
     try {
       await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', clientId), { ...newClient, id: clientId });
       setNewClient(initialNewClientState); setShowForm(false); setEditingId(null);
-    } catch (error) { console.error("Firebase save error", error); }
+    } catch (error) { console.error("Ошибка сохранения", error); }
   };
 
   const editClientClick = (client) => {
@@ -251,9 +273,7 @@ const App = () => {
   };
 
   const deleteClient = async (id) => {
-    if(window.confirm('Удалить клиента?')) {
-        try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString())); } catch (e) {}
-    }
+    try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString())); } catch (e) {}
   };
   
   const changeOrderStatus = async (id, newStatus) => {
@@ -266,50 +286,25 @@ const App = () => {
   const exportData = () => {
     const dataStr = JSON.stringify({ clients, catalog }, null, 2);
     const url = URL.createObjectURL(new Blob([dataStr], { type: 'application/json' }));
-    const link = document.createElement('a'); 
-    link.href = url; 
-    link.download = `toffee_backup_${new Date().toLocaleDateString('ru-RU')}.json`; 
-    link.click(); 
-    URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = `toffee_backup_${new Date().toLocaleDateString('ru-RU')}.json`; link.click(); URL.revokeObjectURL(url);
   };
 
   const exportCSV = () => {
-    // BOM нужен, чтобы Excel правильно читал кириллицу
     const bom = "\uFEFF";
     let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
-
     clients.forEach(c => {
       const itemsStr = (c.purchasedItems || []).map(i => i.name).join("; ");
       const tagsStr = c.tags ? c.tags.join("; ") : "";
       const bdayStr = c.clientBirthday ? c.clientBirthday : "";
       const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} [${r.eventDate}]`).join(" | ");
-
-      // Собираем строку, оборачивая текстовые поля в кавычки, чтобы запятые не сломали столбцы
-      const row = [
-        `"${c.clientName}"`,
-        `"${c.phone}"`,
-        `"${bdayStr}"`,
-        c.isLoyalClient ? "Да" : "Нет",
-        `"${c.currentOrderStatus || 'Не связались'}"`,
-        c.totalPrice || 0,
-        `"${tagsStr}"`,
-        `"${c.preferences || ''}"`,
-        `"${relativesStr}"`,
-        `"${itemsStr}"`,
-        `"${c.isCustomOrder ? c.customOrderDetails : ''}"`
-      ].join(",");
-      
+      const row = [`"${c.clientName}"`, `"${c.phone}"`, `"${bdayStr}"`, c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, c.totalPrice || 0, `"${tagsStr}"`, `"${c.preferences || ''}"`, `"${relativesStr}"`, `"${itemsStr}"`, `"${c.isCustomOrder ? c.customOrderDetails : ''}"`].join(",");
       csvContent += row + "\n";
     });
-
     const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
-    const link = document.createElement('a'); 
-    link.href = url; 
-    link.download = `toffee_clients_excel_${new Date().toLocaleDateString('ru-RU')}.csv`; 
-    link.click(); 
-    URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = `toffee_clients_excel_${new Date().toLocaleDateString('ru-RU')}.csv`; link.click(); URL.revokeObjectURL(url);
   };
 
+  // ОБНОВЛЕННАЯ ЗАГРУЗКА ИЗ JSON: Не ломается и загружает каталог, если клиентов нет
   const importData = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -319,15 +314,16 @@ const App = () => {
         const data = JSON.parse(e.target.result);
         const importedClients = Array.isArray(data) ? data : (data.clients || []);
         
-        // Массовое сохранение в облако
         for (const client of importedClients) {
           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', client.id.toString()), client);
         }
-        alert("Импорт успешно завершен!");
-      } catch (error) { 
-        console.error('Ошибка импорта', error); 
-        alert("Ошибка при чтении файла");
-      }
+        
+        if (data.catalog && Array.isArray(data.catalog)) {
+           await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: data.catalog });
+           setCatalog(data.catalog);
+        }
+        
+      } catch (error) { console.error('Ошибка импорта', error); }
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -387,7 +383,6 @@ const App = () => {
       const d = i + 1;
       const eventsOnThisDay = [];
       
-      // Ищем совпадения по дням и месяцам для дней рождения
       filteredClients.forEach(c => {
          if (c.clientBirthday) {
              const parts = c.clientBirthday.split('-');
@@ -425,7 +420,6 @@ const App = () => {
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
         
-        {/* Скрытый инпут для импорта */}
         <input type="file" ref={fileInputRef} onChange={importData} accept=".json" className="hidden" />
 
         <div className="bg-gradient-to-r from-rose-500 to-pink-600 dark:from-rose-900 dark:to-pink-900 rounded-b-[40px] shadow-xl p-8 pt-12 relative overflow-hidden transition-colors duration-300">
@@ -466,12 +460,11 @@ const App = () => {
                 <button onClick={() => setViewMode('calendar')} className={`p-2.5 rounded-xl transition flex items-center gap-2 font-bold text-sm ${viewMode === 'calendar' ? 'bg-white text-rose-600 dark:bg-slate-800 dark:text-rose-400' : 'text-white hover:bg-white/20'}`}><Calendar className="w-5 h-5" /> <span className="hidden md:inline">{t.calendar}</span></button>
               </div>
               
-              {/* КНОПКИ ИМПОРТА И ЭКСПОРТА */}
               <div className="flex gap-2 justify-center">
-                <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Загрузить резервную копию JSON">
+                <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Загрузить JSON">
                   <Upload className="w-4 h-4" /> {t.import}
                 </button>
-                <button onClick={exportData} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать резервную копию JSON">
+                <button onClick={exportData} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать JSON">
                   <Download className="w-4 h-4" /> JSON
                 </button>
                 <button onClick={exportCSV} className="bg-[#107c41] hover:bg-[#188c4d] text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать базу в формате Excel (CSV)">
@@ -495,7 +488,6 @@ const App = () => {
             </div>
           )}
 
-          {}
           {showForm && (
             <form onSubmit={addClient} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 mb-8 space-y-8 animate-in fade-in">
               <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
@@ -624,7 +616,6 @@ const App = () => {
             </form>
           )}
 
-          {}
           {viewMode === 'list' && !showForm && (
             <div className="space-y-4 mt-8">
               {filteredClients.map(client => {
@@ -707,7 +698,6 @@ const App = () => {
             </div>
           )}
 
-          {}
           {viewMode === 'kanban' && !showForm && (
              <div className="flex gap-4 overflow-x-auto pb-8 mt-8 min-h-[600px] items-start">
                {['Не связались', 'Думает', 'Внес предоплату', 'Готовится', 'Готов/Доставлен'].map(status => (
@@ -733,7 +723,6 @@ const App = () => {
              </div>
           )}
 
-          {}
           {viewMode === 'calendar' && !showForm && (
             <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 animate-in fade-in">
               <div className="flex justify-between items-center mb-6">
@@ -751,7 +740,6 @@ const App = () => {
             </div>
           )}
 
-          {}
           {whatsappHelper.show && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl w-full max-w-md shadow-2xl">
