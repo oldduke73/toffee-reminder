@@ -71,8 +71,10 @@ const getDaysLeft = (dateString) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
+  // Игнорируем год, смотрим только на день и месяц в текущем году
   let nextEvent = new Date(today.getFullYear(), m - 1, d);
   
+  // Если дата уже прошла в этом году, значит праздник будет в следующем
   if (nextEvent < today) {
     nextEvent.setFullYear(today.getFullYear() + 1);
   }
@@ -92,14 +94,15 @@ const App = () => {
   const [theme, setTheme] = useState('light');
   const t = translations[lang];
 
+  // Полный каталог из изображения пользователя
   const initialCatalog = [
-    "Молочная девочка", "Шоколадный пломбир", "Сникерс", "Нутелла", "Наполеон", 
-    "Медовик", "Чизкейк испанский", "Пирог 23см", "Пирог 18см", "Трайфл", 
-    "Моти", "Эклер", "Мини испанский", "Макаронс", "Круассан куриный", 
-    "Круассан семга", "Круассан нутелла", "Круассан фисташка", "Круассан клубника", 
-    "Круассан орео", "Круассан сыр", "Круассан классика", "Корпусный фисташка", 
-    "Корпусный кокос", "Корпусный манго", "Корпусный малина", "Корпусный черника", 
-    "Корпусный круассан", "Бенто торт", "Фрезье", "Минидесерты", "Меренговый рулет"
+    "МОЛОЧНАЯ ДЕВОЧКА", "ШОКОЛАДНЫЙ ПЛОМБИР", "СНИКЕРС", "НУТЕЛЛА", "НАПОЛЕОН", 
+    "МЕДОВИК", "ЧИЗКЕЙК ИСПАНСКИЙ", "ПИРОГ 23СМ", "ПИРОГ 18СМ", "ТРАЙФЛ", 
+    "МОТИ", "ЭКЛЕР", "МИНИ ИСПАНСКИЙ", "МАКАРОНС", "КРУАССАН КУРИНЫЙ", 
+    "КРУАССАН СЕМГА", "КРУАССАН НУТЕЛЛА", "КРУАССАН ФИСТАШКА", "КРУАССАН КЛУБНИКА", 
+    "КРУАССАН ОРЕО", "КРУАССАН СЫР", "КРУАССАН КЛАССИКА", "КОРПУСНЫЙ ФИСТАШКА", 
+    "КОРПУСНЫЙ КОКОС", "КОРПУСНЫЙ МАНГО", "КОРПУСНЫЙ МАЛИНА", "КОРПУСНЫЙ ЧЕРНИКА", 
+    "КОРПУСНЫЙ КРУАССАН", "БЕНТО ТОРТ", "ФРЕЗЬЕ", "МИНИДЕСЕРТЫ", "МЕРЕНГОВЫЙ РУЛЕТ"
   ];
   
   const [catalog, setCatalog] = useState(initialCatalog);
@@ -123,11 +126,14 @@ const App = () => {
     isCustomOrder: false, customOrderDetails: '', purchasedItems: [], totalPrice: 0, currentOrderStatus: 'Не связались'
   };
   const [newClient, setNewClient] = useState(initialNewClientState);
+  
+  // Ссылка для скрытого поля загрузки файлов (Импорт)
   const fileInputRef = useRef(null);
 
   const getNearestEvent = (client) => {
     let allEvents = [];
     
+    // Добавляем день рождения самого клиента
     if (client.clientBirthday) {
         allEvents.push({ 
             eventDate: client.clientBirthday, 
@@ -136,6 +142,7 @@ const App = () => {
         });
     }
     
+    // Добавляем праздники близких
     (client.relatives || []).forEach(rel => {
         if (rel.eventDate) allEvents.push(rel);
     });
@@ -146,7 +153,11 @@ const App = () => {
     allEvents.forEach(e => {
         const days = getDaysLeft(e.eventDate);
         if (days >= 0 && days < nearest.daysLeft) {
-            nearest = { daysLeft: days, date: e.eventDate, name: e.relation + (e.name && e.relation !== 'День рождения клиента' && e.relation !== 'Клиенттің туған күні' ? ` (${e.name})` : '') };
+            nearest = { 
+                daysLeft: days, 
+                date: e.eventDate, 
+                name: e.relation + (e.name && e.relation !== 'День рождения клиента' && e.relation !== 'Клиенттің туған күні' ? ` (${e.name})` : '') 
+            };
         }
     });
     return nearest;
@@ -204,7 +215,7 @@ const App = () => {
   const addOrderItem = async (e) => {
     e.preventDefault();
     if (!orderInput.name || !orderInput.price) return;
-    const formattedName = orderInput.name.trim();
+    const formattedName = orderInput.name.trim().toUpperCase();
     const newItem = { uniqueId: Date.now(), name: formattedName, price: parseInt(orderInput.price) };
     const updatedItems = [...(newClient.purchasedItems || []), newItem];
     const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price), 0);
@@ -250,6 +261,76 @@ const App = () => {
       const client = clients.find(c => c.id === id);
       if (client) await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString()), { ...client, currentOrderStatus: newStatus });
     } catch(e) {}
+  };
+
+  const exportData = () => {
+    const dataStr = JSON.stringify({ clients, catalog }, null, 2);
+    const url = URL.createObjectURL(new Blob([dataStr], { type: 'application/json' }));
+    const link = document.createElement('a'); 
+    link.href = url; 
+    link.download = `toffee_backup_${new Date().toLocaleDateString('ru-RU')}.json`; 
+    link.click(); 
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    // BOM нужен, чтобы Excel правильно читал кириллицу
+    const bom = "\uFEFF";
+    let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
+
+    clients.forEach(c => {
+      const itemsStr = (c.purchasedItems || []).map(i => i.name).join("; ");
+      const tagsStr = c.tags ? c.tags.join("; ") : "";
+      const bdayStr = c.clientBirthday ? c.clientBirthday : "";
+      const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} [${r.eventDate}]`).join(" | ");
+
+      // Собираем строку, оборачивая текстовые поля в кавычки, чтобы запятые не сломали столбцы
+      const row = [
+        `"${c.clientName}"`,
+        `"${c.phone}"`,
+        `"${bdayStr}"`,
+        c.isLoyalClient ? "Да" : "Нет",
+        `"${c.currentOrderStatus || 'Не связались'}"`,
+        c.totalPrice || 0,
+        `"${tagsStr}"`,
+        `"${c.preferences || ''}"`,
+        `"${relativesStr}"`,
+        `"${itemsStr}"`,
+        `"${c.isCustomOrder ? c.customOrderDetails : ''}"`
+      ].join(",");
+      
+      csvContent += row + "\n";
+    });
+
+    const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a'); 
+    link.href = url; 
+    link.download = `toffee_clients_excel_${new Date().toLocaleDateString('ru-RU')}.csv`; 
+    link.click(); 
+    URL.revokeObjectURL(url);
+  };
+
+  const importData = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        const importedClients = Array.isArray(data) ? data : (data.clients || []);
+        
+        // Массовое сохранение в облако
+        for (const client of importedClients) {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', client.id.toString()), client);
+        }
+        alert("Импорт успешно завершен!");
+      } catch (error) { 
+        console.error('Ошибка импорта', error); 
+        alert("Ошибка при чтении файла");
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const openWhatsAppHelper = (client) => {
@@ -306,16 +387,14 @@ const App = () => {
       const d = i + 1;
       const eventsOnThisDay = [];
       
-      // Ищем совпадения по дням рождения в текущем месяце
+      // Ищем совпадения по дням и месяцам для дней рождения
       filteredClients.forEach(c => {
-         // Проверяем день рождения самого клиента
          if (c.clientBirthday) {
              const parts = c.clientBirthday.split('-');
              if (parts.length === 3 && parseInt(parts[1]) === month + 1 && parseInt(parts[2]) === d) {
                  eventsOnThisDay.push({ client: c, rel: { relation: lang === 'ru' ? 'День рождения' : 'Туған күн', name: c.clientName } });
              }
          }
-         // Проверяем праздники близких
          (c.relatives || []).forEach(rel => {
            if (rel.eventDate) {
              const parts = rel.eventDate.split('-');
@@ -346,6 +425,9 @@ const App = () => {
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
         
+        {/* Скрытый инпут для импорта */}
+        <input type="file" ref={fileInputRef} onChange={importData} accept=".json" className="hidden" />
+
         <div className="bg-gradient-to-r from-rose-500 to-pink-600 dark:from-rose-900 dark:to-pink-900 rounded-b-[40px] shadow-xl p-8 pt-12 relative overflow-hidden transition-colors duration-300">
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4 max-w-7xl mx-auto">
             <div className="text-center md:text-left flex flex-col items-center md:items-start">
@@ -383,11 +465,23 @@ const App = () => {
                 <button onClick={() => setViewMode('kanban')} className={`p-2.5 rounded-xl transition flex items-center gap-2 font-bold text-sm ${viewMode === 'kanban' ? 'bg-white text-rose-600 dark:bg-slate-800 dark:text-rose-400' : 'text-white hover:bg-white/20'}`}><Kanban className="w-5 h-5" /> <span className="hidden md:inline">{t.board}</span></button>
                 <button onClick={() => setViewMode('calendar')} className={`p-2.5 rounded-xl transition flex items-center gap-2 font-bold text-sm ${viewMode === 'calendar' ? 'bg-white text-rose-600 dark:bg-slate-800 dark:text-rose-400' : 'text-white hover:bg-white/20'}`}><Calendar className="w-5 h-5" /> <span className="hidden md:inline">{t.calendar}</span></button>
               </div>
+              
+              {/* КНОПКИ ИМПОРТА И ЭКСПОРТА */}
+              <div className="flex gap-2 justify-center">
+                <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Загрузить резервную копию JSON">
+                  <Upload className="w-4 h-4" /> {t.import}
+                </button>
+                <button onClick={exportData} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать резервную копию JSON">
+                  <Download className="w-4 h-4" /> JSON
+                </button>
+                <button onClick={exportCSV} className="bg-[#107c41] hover:bg-[#188c4d] text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Скачать базу в формате Excel (CSV)">
+                  <FileSpreadsheet className="w-4 h-4" /> Excel
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-[-20px] relative z-20">
           {!showForm && (
             <div className="flex flex-col md:flex-row gap-4 mb-6">
