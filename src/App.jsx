@@ -251,17 +251,16 @@ const App = () => {
 
   const exportCSV = () => {
     const bom = "\uFEFF";
-    let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
+    let csvContent = bom + "Имя,Телефон,Близкие и Праздники,Сумма чека,VIP,Статус,Диета,Предпочтения,Индив.заказ,Детали инд.заказа,Товары\n";
     clients.forEach(c => {
       const itemsStr = (c.purchasedItems || []).map(i => i.name).join("; ");
       const tagsStr = c.tags ? c.tags.join("; ") : "";
-      const bdayStr = c.clientBirthday ? c.clientBirthday : "";
-      const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} [${r.eventDate}]`).join(" | ");
-      const row = [`"${c.clientName}"`, `"${c.phone}"`, `"${bdayStr}"`, c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, c.totalPrice || 0, `"${tagsStr}"`, `"${c.preferences || ''}"`, `"${relativesStr}"`, `"${itemsStr}"`, `"${c.isCustomOrder ? c.customOrderDetails : ''}"`].join(",");
+      const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} ${r.phone ? `(${r.phone})` : ''} [${r.eventDate}]`).join(" | ");
+      const row = [`"${c.clientName}"`, `"${c.phone}"`, `"${relativesStr}"`, c.totalPrice, c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, `"${tagsStr}"`, `"${c.preferences || ''}"`, c.isCustomOrder ? "Да" : "Нет", `"${c.customOrderDetails || ''}"`, `"${itemsStr}"`].join(",");
       csvContent += row + "\n";
     });
     const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
-    const link = document.createElement('a'); link.href = url; link.download = `toffee_clients_excel_${new Date().toLocaleDateString('ru-RU')}.csv`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = `toffee_clients_table_${new Date().toLocaleDateString('ru-RU')}.csv`; link.click(); URL.revokeObjectURL(url);
   };
 
   const importData = async (event) => {
@@ -275,23 +274,44 @@ const App = () => {
         if (file.name.toLowerCase().endsWith('.csv')) {
            const lines = text.split('\n').filter(line => line.trim() !== '');
            if (lines.length > 1) {
+              // УМНЫЙ ПАРСЕР: Сам определяет, запятая или точка с запятой
               const parseCSVRow = (str) => {
+                  const separator = str.includes(';') ? ';' : ',';
                   let result = []; let inQuotes = false; let current = '';
                   for (let i = 0; i < str.length; i++) {
                       if (str[i] === '"') { inQuotes = !inQuotes; }
-                      else if (str[i] === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
+                      else if (str[i] === separator && !inQuotes) { result.push(current.trim()); current = ''; }
                       else { current += str[i]; }
                   }
                   result.push(current.trim()); return result;
               };
 
+              // КОНВЕРТЕР ДАТ: Переводит 11.08 или 20.06.2026 в формат 2026-08-11 для Календаря
+              const formatDateForCalendar = (dateStr) => {
+                  if (!dateStr) return '';
+                  let cleanStr = dateStr.replace(/"/g, '').trim();
+                  const match = cleanStr.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$/);
+                  if (match) {
+                      const d = match[1].padStart(2, '0');
+                      const m = match[2].padStart(2, '0');
+                      const y = match[3] || new Date().getFullYear().toString();
+                      return `${y}-${m}-${d}`;
+                  }
+                  // Если дата уже в правильном формате
+                  if (cleanStr.match(/^\d{4}-\d{2}-\d{2}$/)) return cleanStr;
+                  return '';
+              };
+
               for (let i = 1; i < lines.length; i++) {
                  const cleanRow = parseCSVRow(lines[i]);
                  if (cleanRow.length >= 2 && cleanRow[0]) {
-                    // НАДЕЖНАЯ ЗАЩИТА: Заменяем пустые/неопределенные поля на дефолтные
                     const safeName = cleanRow[0] ? cleanRow[0].replace(/"/g, '') : 'Без имени';
                     const safePhone = cleanRow[1] ? cleanRow[1].replace(/"/g, '') : '';
-                    const safeBday = cleanRow[2] ? cleanRow[2].replace(/"/g, '') : '';
+                    
+                    // Применяем конвертер дат к колонке Дня Рождения/Заказа (индекс 2)
+                    const rawDate = cleanRow[2] ? cleanRow[2].replace(/"/g, '') : '';
+                    const safeBday = formatDateForCalendar(rawDate);
+                    
                     const safeVip = cleanRow[3] === 'Да' || cleanRow[3] === '"Да"';
                     const safeStatus = cleanRow[4] ? cleanRow[4].replace(/"/g, '') : 'Не связались';
                     const safePrice = Number(cleanRow[5]) || 0;
@@ -299,7 +319,6 @@ const App = () => {
                     const safePref = cleanRow[7] ? cleanRow[7].replace(/"/g, '') : '';
                     const safeItems = cleanRow[9] ? cleanRow[9].replace(/"/g, '').split('; ').filter(n=>n).map(name => ({uniqueId: Date.now()+Math.random(), name: name.trim(), price: 0})) : [];
                     
-                    // Жесткая проверка для Булевых значений и Текста
                     const safeIsCustomOrder = cleanRow[10] ? Boolean(cleanRow[10].replace(/"/g, '').trim().length > 0) : false;
                     const safeCustomDetails = cleanRow[10] ? String(cleanRow[10].replace(/"/g, '').trim()) : "";
 
@@ -307,7 +326,7 @@ const App = () => {
                        id: Date.now().toString() + i + Math.floor(Math.random()*1000),
                        clientName: safeName, 
                        phone: safePhone,
-                       clientBirthday: safeBday, 
+                       clientBirthday: safeBday, // <-- Дата теперь отправляется в нужном формате!
                        isLoyalClient: safeVip,
                        currentOrderStatus: safeStatus, 
                        totalPrice: safePrice,
@@ -319,7 +338,6 @@ const App = () => {
                        customOrderDetails: safeCustomDetails
                     };
                     
-                    console.log("Успешно подготовлен к загрузке:", safeName);
                     await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClient.id.toString()), newClient);
                  }
               }
@@ -329,51 +347,13 @@ const App = () => {
             const data = JSON.parse(text);
             const importedClients = Array.isArray(data) ? data : (data.clients || []);
             for (const client of importedClients) {
-              const safeClient = {
-                 ...client,
-                 isCustomOrder: client.isCustomOrder || false,
-                 customOrderDetails: client.customOrderDetails || ""
-              };
-              await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', safeClient.id.toString()), safeClient);
-            }
-            if (data.catalog && Array.isArray(data.catalog)) {
-               await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: data.catalog });
-               setCatalog(data.catalog);
+               await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', client.id.toString()), client);
             }
         }
       } catch (error) { console.error('Ошибка импорта', error); }
     };
-    reader.readAsText(file); // Читаем в UTF-8
+    reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const openWhatsAppHelper = (client) => {
-    const nearest = getNearestEvent(client);
-    let timeText = nearest.daysLeft === 0 ? "уже сегодня" : nearest.daysLeft === 1 ? "завтра" : `через ${nearest.daysLeft} дн.`;
-    let itemsText = (client.purchasedItems && client.purchasedItems.length > 0) ? `В прошлом году вы брали у нас ${client.purchasedItems[0].name.toLowerCase()}.` : "";
-    const draftText = `Здравствуйте, ${client.clientName}! \nПишу вам, чтобы помочь с подготовкой: ${timeText} праздник (${nearest.name}). \n${itemsText} \nСделать для вас подборку начинок и свободных окошек на эту дату?`;
-    setWhatsappHelper({ show: true, client, draftText });
-    setShowDraftPreview(false);
-  };
-  
-  const sendToWhatsApp = () => {
-    window.open(`https://wa.me/${whatsappHelper.client.phone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappHelper.draftText)}`, '_blank');
-    setWhatsappHelper({ show: false, client: null, draftText: '' });
-  };
-
-  const copyToClipboard = (client) => {
-    const itemsList = (client.purchasedItems || []).map(i => `- ${i.name} (${i.price} ₸)`).join('\n');
-    const tagsStr = client.tags && client.tags.length > 0 ? `\n⚠️ Особенности: ${client.tags.join(', ')}` : '';
-    const prefStr = client.preferences ? `\n📝 Предпочтения: ${client.preferences}` : '';
-    const customOrderStr = client.isCustomOrder ? `\n🎨 ИНДИВИДУАЛЬНЫЙ ЗАКАЗ:\n${client.customOrderDetails}` : '';
-    const bdayStr = client.clientBirthday ? `\n🎂 День рождения клиента: ${getFormatDate(client.clientBirthday, lang)}` : '';
-    const relativesList = (client.relatives || []).map(r => `  - ${r.relation} ${r.name || ''} ${r.phone ? `📞 ${r.phone}` : ''} (${getFormatDate(r.eventDate, lang)})`).join('\n');
-    const textToCopy = `👤 Имя: ${client.clientName} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}${bdayStr}\n📅 Праздники близких:\n${relativesList}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
-    
-    try {
-        navigator.clipboard.writeText(textToCopy);
-        setCopiedId(client.id); setTimeout(() => setCopiedId(null), 2000);
-    } catch (err) {}
   };
 
   const statusMap = {
