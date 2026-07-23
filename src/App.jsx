@@ -83,6 +83,11 @@ const App = () => {
   const [authState, setAuthState] = useState('logged_out'); 
   const [showAccessModal, setShowAccessModal] = useState(false);
 
+  // ИСПРАВЛЕНИЕ: Хуки формы входа должны быть на верхнем уровне, чтобы не нарушать правила React!
+  const [loginInput, setLoginInput] = useState('');
+  const [passInput, setPassInput] = useState('');
+  const [authError, setAuthError] = useState('');
+
   // Глобальные состояния
   const [user, setUser] = useState(null);
   const [isDbConnected, setIsDbConnected] = useState(false);
@@ -175,14 +180,21 @@ const App = () => {
     const unsubscribeClients = onSnapshot(clientsRef, (snapshot) => {
       const loadedClients = [];
       snapshot.forEach(doc => {
-        // ЗАЩИТА: Убеждаемся что нет undefined данных с сервера
         const data = doc.data();
+        // ИСПРАВЛЕНИЕ: Жесткая санитария данных. Гарантируем, что undefined никогда не сломает интерфейс.
         loadedClients.push({ 
-          ...data, 
           id: doc.id,
-          purchasedItems: data.purchasedItems || [],
-          relatives: data.relatives || [],
-          tags: data.tags || []
+          clientName: String(data.clientName || ""),
+          phone: String(data.phone || ""),
+          isLoyalClient: Boolean(data.isLoyalClient),
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          preferences: String(data.preferences || ""),
+          relatives: Array.isArray(data.relatives) ? data.relatives : [],
+          isCustomOrder: Boolean(data.isCustomOrder),
+          customOrderDetails: String(data.customOrderDetails || ""),
+          purchasedItems: Array.isArray(data.purchasedItems) ? data.purchasedItems : [],
+          totalPrice: Number(data.totalPrice) || 0,
+          currentOrderStatus: String(data.currentOrderStatus || "Не связались")
         });
       });
       setClients(loadedClients);
@@ -204,20 +216,20 @@ const App = () => {
 
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
-      const query = searchQuery.toLowerCase();
-      // Защита: проверяем существование clientName и phone перед toLowerCase
-      const nameMatch = client.clientName && client.clientName.toLowerCase().includes(query);
-      const phoneMatch = client.phone && client.phone.includes(query);
-      const itemsMatch = client.purchasedItems && client.purchasedItems.some(item => 
-        item && item.name && item.name.toLowerCase().includes(query)
+      const query = String(searchQuery || "").toLowerCase();
+      
+      const nameMatch = client.clientName.toLowerCase().includes(query);
+      const phoneMatch = client.phone.includes(query);
+      const itemsMatch = client.purchasedItems.some(item => 
+        item && item.name && String(item.name).toLowerCase().includes(query)
       );
 
       const matchesSearch = nameMatch || phoneMatch || itemsMatch;
 
       const matchesFilter = filterCake === 'All' || 
-        (client.purchasedItems && client.purchasedItems.some(item => 
-          item && item.name && item.name.toUpperCase() === filterCake.toUpperCase()
-        ));
+        client.purchasedItems.some(item => 
+          item && item.name && String(item.name).toUpperCase() === String(filterCake).toUpperCase()
+        );
 
       return matchesSearch && matchesFilter;
     });
@@ -385,20 +397,27 @@ const App = () => {
             const items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim() || 'Без названия', price: 0 })) : [];
             const tags = row[6] ? row[6].split(';').map(t => t.trim()).filter(Boolean) : [];
 
-            // ЗАЩИТА: Нет undefined данных
+            // ЗАЩИТА: Строгая типизация данных перед отправкой в Firebase
             const newClientData = {
-              id: Date.now().toString() + i,
-              clientName: row[0] || "Без имени",
-              phone: row[1] || "",
-              isLoyalClient: row[3] === 'Да',
-              currentOrderStatus: row[4] || "Не связались",
-              totalPrice: parseInt(row[5]) || 0,
+              id: Date.now().toString() + Math.random().toString().substring(2, 8),
+              clientName: String(row[0] || "Без имени"),
+              phone: String(row[1] || ""),
+              isLoyalClient: Boolean(row[3] === 'Да' || row[3] === 'да'),
+              currentOrderStatus: String(row[4] || "Не связались"),
+              totalPrice: Number(parseInt(row[5])) || 0,
               tags: tags,
-              preferences: row[7] || "",
-              relatives: formattedDate ? [{ id: Date.now() + Math.random(), relation: 'Себе', name: row[0] || "", phone: row[1] || "", eventDate: formattedDate, eventType: 'День рождения' }] : [],
+              preferences: String(row[7] || ""),
+              relatives: formattedDate ? [{ 
+                id: Date.now() + Math.random(), 
+                relation: 'Себе', 
+                name: String(row[0] || "Без имени"), 
+                phone: String(row[1] || ""), 
+                eventDate: formattedDate, 
+                eventType: 'День рождения' 
+              }] : [],
               purchasedItems: items,
-              isCustomOrder: (row[10] && row[10].trim().length > 0) ? true : false,
-              customOrderDetails: row[10] || ""
+              isCustomOrder: Boolean(row[10] && row[10].trim().length > 0),
+              customOrderDetails: String(row[10] || "")
             };
 
             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClientData.id), newClientData);
@@ -478,21 +497,17 @@ const App = () => {
     return [...blanks, ...days];
   };
 
-  // Защита для сбора имен продуктов
   const allProductNames = Array.from(new Set([
     ...catalog, 
     ...clients.flatMap(c => (c.purchasedItems || []).map(i => i && i.name ? i.name : null).filter(Boolean))
   ])).sort();
 
   if (authState === 'logged_out') {
-    const [loginInput, setLoginInput] = useState('');
-    const [passInput, setPassInput] = useState('');
-    const [authError, setAuthError] = useState('');
-
     const handleLogin = (e) => {
       e.preventDefault();
       if (loginInput === 'Toffee2026' && passInput === 'crm0803') {
         setAuthState('admin');
+        setAuthError('');
       } else {
         setAuthError('Неверный логин или пароль');
       }
@@ -532,7 +547,7 @@ const App = () => {
             <div className="flex-grow border-t border-slate-200"></div>
           </div>
 
-          <button onClick={() => setAuthState('guest')} className="w-full bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold py-3.5 rounded-xl transition flex justify-center items-center gap-2">
+          <button onClick={() => { setAuthState('guest'); setAuthError(''); }} className="w-full bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold py-3.5 rounded-xl transition flex justify-center items-center gap-2">
             <Search className="w-5 h-5 text-slate-400" /> Демо-режим (Только просмотр)
           </button>
         </div>
