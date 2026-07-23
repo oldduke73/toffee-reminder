@@ -6,10 +6,12 @@ import {
   Globe, Cloud, CloudOff, Lock, Unlock, LogOut, Cake 
 } from 'lucide-react';
 
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+// === ИМПОРТЫ FIREBASE ===
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
 
+// === ВАШИ НАСТРОЙКИ FIREBASE ===
 const firebaseConfig = {
   apiKey: "AIzaSyAJroZn4GiNALqV36xq9ge1AJy2NXX_7qY",
   authDomain: "toffee-reminder-crm.firebaseapp.com",
@@ -24,10 +26,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const APP_ID = 'toffee-crm';
 
+// === ПЕРЕВОДЫ ===
 const translations = {
   ru: {
     subtitle: 'Умная CRM для кондитерских', inBase: 'В базе', totalSales: 'Сумма чеков',
-    list: 'Список', board: 'Доска', calendar: 'Календарь', import: 'Импорт', export: 'Экспорт',
+    list: 'Список', board: 'Доска', calendar: 'Календарь', import: 'Импорт CSV', export: 'Экспорт',
     addClient: 'Добавить клиента', search: 'Поиск по базе...', editCard: 'Редактировать карточку',
     newClient: 'Новый клиент', basicData: 'Основные данные', name: 'Имя', phone: 'Телефон *',
     vip: 'VIP Клиент', allergies: 'Аллергии (Теги)', preferences: 'Предпочтения (Текст)',
@@ -44,7 +47,7 @@ const translations = {
   },
   kz: {
     subtitle: 'Кондитерлерге арналған ақылды CRM', inBase: 'Базада', totalSales: 'Жалпы сома',
-    list: 'Тізім', board: 'Тақта', calendar: 'Күнтізбе', import: 'Импорт', export: 'Экспорт',
+    list: 'Тізім', board: 'Тақта', calendar: 'Күнтізбе', import: 'Импорт CSV', export: 'Экспорт',
     addClient: 'Клиент қосу', search: 'Базадан іздеу...', editCard: 'Карточканы өңдеу',
     newClient: 'Жаңа клиент', basicData: 'Негізгі деректер', name: 'Аты', phone: 'Телефон *',
     vip: 'VIP Клиент', allergies: 'Аллергия (Тегтер)', preferences: 'Қалаулары (Мәтін)',
@@ -78,41 +81,42 @@ const statusMap = {
 
 const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
 
+// ==========================================
+// ОСНОВНОЙ КОМПОНЕНТ ПРИЛОЖЕНИЯ
+// ==========================================
 const App = () => {
+  // === Состояния авторизации ===
   const [authState, setAuthState] = useState('logged_out'); 
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [passInput, setPassInput] = useState('');
   const [authError, setAuthError] = useState('');
 
+  // === Состояния Firebase и БД ===
   const [user, setUser] = useState(null);
   const [isDbConnected, setIsDbConnected] = useState(false);
+  
+  // === Состояния интерфейса ===
   const [lang, setLang] = useState('ru');
   const [theme, setTheme] = useState('light');
   const [notification, setNotification] = useState('');
   const t = translations[lang];
 
+  // === Данные ===
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
   
+  // === Формы и поиск ===
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCake, setFilterCake] = useState('All');
   const [editingId, setEditingId] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); 
+  const [viewMode, setViewMode] = useState('kanban'); 
   const [whatsappHelper, setWhatsappHelper] = useState({ show: false, client: null, draftText: '' });
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [orderInput, setOrderInput] = useState({ name: '', price: '' });
   const fileInputRef = useRef(null);
-
-  const handleProtectedAction = (actionFn) => {
-    if (authState === 'guest') {
-      setShowAccessModal(true);
-      return;
-    }
-    actionFn();
-  };
 
   const initialNewClientState = { 
     clientName: '', phone: '+7 ', isLoyalClient: false, tags: [], preferences: '',
@@ -121,6 +125,16 @@ const App = () => {
   };
   const [newClient, setNewClient] = useState(initialNewClientState);
 
+  // === Умная защита действий (Гость / Админ) ===
+  const handleProtectedAction = (actionFn) => {
+    if (authState === 'guest') {
+      setShowAccessModal(true);
+      return;
+    }
+    actionFn();
+  };
+
+  // === Вспомогательные функции дат ===
   const getDaysLeft = (targetDate) => {
     if (!targetDate) return 999;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -134,20 +148,21 @@ const App = () => {
   };
 
   const getNearestEvent = (relatives) => {
-    const safeRelatives = relatives || [];
+    const safeRelatives = Array.isArray(relatives) ? relatives : [];
     if (safeRelatives.length === 0) return { daysLeft: 999, date: null, name: '' };
     let nearest = { daysLeft: 999, date: null, name: '' };
     safeRelatives.forEach(rel => {
-      const days = getDaysLeft(rel.eventDate);
-      if (days >= 0 && days < nearest.daysLeft) nearest = { daysLeft: days, date: rel.eventDate, name: rel.relation + (rel.name ? ` (${rel.name})` : '') };
+      const days = getDaysLeft(rel?.eventDate);
+      if (days >= 0 && days < nearest.daysLeft) nearest = { daysLeft: days, date: rel?.eventDate, name: rel?.relation + (rel?.name ? ` (${rel.name})` : '') };
     });
     if (nearest.daysLeft === 999) {
-       const sorted = [...safeRelatives].sort((a,b) => new Date(b.eventDate) - new Date(a.eventDate));
+       const sorted = [...safeRelatives].sort((a,b) => new Date(b?.eventDate) - new Date(a?.eventDate));
        nearest = { daysLeft: getDaysLeft(sorted[0]?.eventDate), date: sorted[0]?.eventDate, name: sorted[0]?.relation };
     }
     return nearest;
   };
 
+  // === Подключение к Firebase ===
   useEffect(() => {
     if (authState === 'logged_out') return;
 
@@ -168,6 +183,7 @@ const App = () => {
     return () => unsubscribe();
   }, [authState]);
 
+  // === Загрузка данных из БД ===
   useEffect(() => {
     if (!user || authState === 'logged_out') return;
     
@@ -176,6 +192,7 @@ const App = () => {
       const loadedClients = [];
       snapshot.forEach(doc => {
         const data = doc.data();
+        // САНИТАЙЗЕР: Строгая проверка всех полей, чтобы не было белого экрана
         loadedClients.push({ 
           id: doc.id,
           clientName: String(data.clientName || ""),
@@ -188,7 +205,8 @@ const App = () => {
           customOrderDetails: String(data.customOrderDetails || ""),
           purchasedItems: Array.isArray(data.purchasedItems) ? data.purchasedItems : [],
           totalPrice: Number(data.totalPrice) || 0,
-          currentOrderStatus: String(data.currentOrderStatus || "Не связались")
+          currentOrderStatus: String(data.currentOrderStatus || "Не связались"),
+          clientBirthday: String(data.clientBirthday || "") // Для совместимости со старыми импортами
         });
       });
       setClients(loadedClients);
@@ -208,6 +226,7 @@ const App = () => {
     return () => { unsubscribeClients(); unsubscribeCatalog(); };
   }, [user, authState]);
 
+  // === ФИЛЬТРАЦИЯ КЛИЕНТОВ (Поиск + Торты) ===
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
       const query = String(searchQuery || "").toLowerCase();
@@ -231,14 +250,15 @@ const App = () => {
 
   const totalSales = clients.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
 
+  // === Умное отображение имени ===
   const getDisplayName = (client) => {
-    // Умная функция: если имени нет или оно испорчено "???", показываем номер телефона
     if (client.clientName && client.clientName.trim() !== "" && client.clientName.trim() !== "Без имени" && !client.clientName.includes("?")) {
       return client.clientName;
     }
-    return client.phone || "Неизвестно";
+    return client.phone || "Неизвестно"; // Если имени нет, показываем телефон!
   };
 
+  // === Обработчики форм ===
   const handlePhoneChange = (e) => {
     let input = e.target.value.replace(/\D/g, ''); if (input.length === 0) input = '7'; if (input[0] !== '7') input = '7' + input; input = input.substring(0, 11);
     let formatted = '+7 '; if (input.length > 1) formatted += '(' + input.substring(1, 4); if (input.length >= 5) formatted += ') ' + input.substring(4, 7); if (input.length >= 8) formatted += '-' + input.substring(7, 9); if (input.length >= 10) formatted += '-' + input.substring(9, 11);
@@ -286,10 +306,10 @@ const App = () => {
     setNewClient({ ...newClient, purchasedItems: updatedItems, totalPrice: updatedPrice });
   };
 
+  // === Сохранение клиента ===
   const addClient = async (e) => {
     e.preventDefault();
     handleProtectedAction(async () => {
-      // Имя больше не обязательно. Главное - чтобы был номер телефона.
       if (newClient.phone.length < 18) {
         setNotification('Введите номер телефона полностью');
         setTimeout(() => setNotification(''), 3000);
@@ -345,13 +365,14 @@ const App = () => {
     });
   };
 
+  // === ЭКСПОРТ В EXCEL ===
   const exportCSV = () => {
     const bom = "\uFEFF";
     let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
     clients.forEach(c => {
-      const itemsStr = (c.purchasedItems || []).map(i => i.name || '').join("; ");
+      const itemsStr = (c.purchasedItems || []).map(i => i?.name || '').join("; ");
       const tagsStr = c.tags ? c.tags.join("; ") : "";
-      let mainBirthday = "";
+      let mainBirthday = c.clientBirthday || ""; // Берем из корня, если есть
       if (c.relatives && c.relatives.length > 0) {
         const selfRel = c.relatives.find(r => r.relation === 'Себе' || r.relation === 'Өзіме');
         if (selfRel) mainBirthday = selfRel.eventDate;
@@ -371,6 +392,7 @@ const App = () => {
     link.click(); URL.revokeObjectURL(url);
   };
 
+  // === УМНЫЙ ИМПОРТ ===
   const importData = (event) => {
     handleProtectedAction(() => {
       const file = event.target.files[0];
@@ -381,7 +403,7 @@ const App = () => {
       reader.onload = async (e) => {
         try {
           const text = e.target.result;
-          const delimiter = text.includes(';') ? ';' : ',';
+          const delimiter = text.includes(';') ? ';' : ','; // Умное определение разделителя
           const lines = text.split('\n').filter(line => line.trim() !== '');
           const dataLines = lines.slice(1);
           
@@ -392,21 +414,28 @@ const App = () => {
             const line = dataLines[i];
             const row = line.split(delimiter).map(cell => cell ? cell.trim().replace(/^"|"$/g, '') : "");
             
-            // Если нет ни имени, ни телефона, ни даты - пропускаем мусорную строку
-            if (!row[0] && !row[1] && !row[2]) continue; 
+            // Если нет телефона и даты - пропускаем мусор. ИМЯ не обязательно!
+            if (!row[1] && !row[2]) continue; 
 
             // Умный парсинг даты
             let formattedDate = "";
             if (row[2]) {
               const dateStr = row[2].trim();
               if (/^\d{1,2}\.\d{1,2}$/.test(dateStr)) {
+                // ДД.ММ -> 2026-ММ-ДД
                 const [day, month] = dateStr.split('.');
                 formattedDate = `2026-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
               } else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateStr)) {
+                // ДД.ММ.ГГГГ -> ГГГГ-ММ-ДД
                 const [day, month, year] = dateStr.split('.');
                 formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
               } else {
-                formattedDate = dateStr; 
+                 const d = new Date(dateStr);
+                 if (!isNaN(d.getTime())) {
+                     formattedDate = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+                 } else {
+                     formattedDate = dateStr; 
+                 }
               }
             }
 
@@ -419,9 +448,9 @@ const App = () => {
             let isCustom = false;
             let customDetails = "";
 
-            // АВТО-ОПРЕДЕЛЕНИЕ (4 КОЛОНКИ ИЛИ 11 КОЛОНОК)
+            // АВТО-ОПРЕДЕЛЕНИЕ ФОРМАТА ФАЙЛА (4 ИЛИ 11 КОЛОНОК)
             if (row.length <= 5) {
-              // Короткий формат (Имя, Телефон, Дата, Торт)
+              // Короткий формат
               items = row[3] ? [{ uniqueId: Date.now() + Math.random(), name: row[3].trim(), price: 0 }] : [];
             } else {
               // Полный формат 11 колонок
@@ -436,9 +465,17 @@ const App = () => {
               customDetails = String(row[10] || "");
             }
 
-            // ЗАЩИТА: Строгая типизация
-            // Если имени нет, сохраняем как "Без имени" (отображаться будет телефон)
             const finalClientName = row[0] && row[0].trim() !== "" ? String(row[0]) : "Без имени";
+
+            // Правильное сохранение даты для Календаря!
+            const relativesArray = formattedDate ? [{ 
+                id: Date.now() + Math.random(), 
+                relation: 'Себе', 
+                name: finalClientName === "Без имени" ? "" : finalClientName, 
+                phone: String(row[1] || ""), 
+                eventDate: formattedDate, 
+                eventType: 'День рождения' 
+            }] : [];
 
             const newClientData = {
               id: Date.now().toString() + Math.random().toString().substring(2, 8),
@@ -449,14 +486,8 @@ const App = () => {
               totalPrice: price,
               tags: tags,
               preferences: prefs,
-              relatives: formattedDate ? [{ 
-                id: Date.now() + Math.random(), 
-                relation: 'Себе', 
-                name: finalClientName, 
-                phone: String(row[1] || ""), 
-                eventDate: formattedDate, 
-                eventType: 'День рождения' 
-              }] : [],
+              relatives: relativesArray, // Дата теперь тут!
+              clientBirthday: formattedDate, // И тут (на всякий случай)
               purchasedItems: items,
               isCustomOrder: isCustom,
               customOrderDetails: customDetails
@@ -480,6 +511,7 @@ const App = () => {
     });
   };
 
+  // === Drag and Drop для Канбана ===
   const onDragStart = (e, clientId) => {
     if (authState === 'guest') { e.preventDefault(); handleProtectedAction(() => {}); return; }
     e.dataTransfer.setData('clientId', clientId.toString());
@@ -491,6 +523,7 @@ const App = () => {
     changeOrderStatus(clientId, targetStatus);
   };
 
+  // === Интеграция с WhatsApp ===
   const openWhatsAppHelper = (client) => {
     const nearest = getNearestEvent(client.relatives);
     let timeText = nearest.daysLeft === 0 ? "уже сегодня" : nearest.daysLeft === 1 ? "завтра" : `через ${nearest.daysLeft} дн.`;
@@ -506,11 +539,11 @@ const App = () => {
   };
 
   const copyToClipboard = (client) => {
-    const itemsList = (client.purchasedItems || []).map(i => `- ${i.name} (${i.price} ₸)`).join('\n');
+    const itemsList = (client.purchasedItems || []).map(i => `- ${i?.name} (${i?.price} ₸)`).join('\n');
     const tagsStr = client.tags && client.tags.length > 0 ? `\n⚠️ Особенности: ${client.tags.join(', ')}` : '';
     const prefStr = client.preferences ? `\n📝 Предпочтения: ${client.preferences}` : '';
     const customOrderStr = client.isCustomOrder ? `\n🎨 ИНДИВИДУАЛЬНЫЙ ЗАКАЗ:\n${client.customOrderDetails}` : '';
-    const relativesList = (client.relatives || []).map(r => `  - ${r.relation} ${r.name || ''} ${r.phone ? `📞 ${r.phone}` : ''} (${getFormatDate(r.eventDate)})`).join('\n');
+    const relativesList = (client.relatives || []).map(r => `  - ${r?.relation} ${r?.name || ''} ${r?.phone ? `📞 ${r.phone}` : ''} (${getFormatDate(r?.eventDate)})`).join('\n');
     const textToCopy = `👤 Имя: ${getDisplayName(client)} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}\n📅 Праздники близких:\n${relativesList}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
     try {
         const textArea = document.createElement("textarea"); textArea.value = textToCopy; document.body.appendChild(textArea); textArea.focus(); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea);
@@ -518,17 +551,35 @@ const App = () => {
     } catch (err) {}
   };
 
+  // === УМНЫЙ РЕНДЕР КАЛЕНДАРЯ ===
   const renderCalendarDays = () => {
     const year = calendarDate.getFullYear(); const month = calendarDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     let startDay = new Date(year, month, 1).getDay() - 1;
     if (startDay === -1) startDay = 6;
     const blanks = Array.from({ length: startDay }).map((_, i) => <div key={`blank-${i}`} className="min-h-[80px]"></div>);
+    
     const days = Array.from({ length: daysInMonth }).map((_, i) => {
       const d = i + 1;
       const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
       const eventsOnThisDay = [];
-      filteredClients.forEach(c => (c.relatives || []).forEach(rel => { if (rel.eventDate === dateStr) eventsOnThisDay.push({ client: c, rel: rel }); }));
+      
+      // Ищем совпадения по всем клиентам
+      filteredClients.forEach(c => {
+        // 1. Ищем в relatives (правильный способ)
+        (c.relatives || []).forEach(rel => { 
+          if (rel?.eventDate === dateStr) {
+            eventsOnThisDay.push({ client: c, rel: rel }); 
+          }
+        });
+        // 2. Ищем в корне (резервный способ для старых баз, чтобы вы не удаляли старые данные!)
+        if (c.clientBirthday === dateStr) {
+           // Добавляем, только если этого клиента еще нет в списке на этот день
+           if (!eventsOnThisDay.some(e => e.client.id === c.id)) {
+             eventsOnThisDay.push({ client: c, rel: { relation: 'Себе', name: c.clientName }});
+           }
+        }
+      });
       
       return (
         <div key={d} className={`min-h-[80px] p-2 rounded-xl border flex flex-col ${eventsOnThisDay.length > 0 ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700'}`}>
@@ -554,6 +605,7 @@ const App = () => {
     ...clients.flatMap(c => (c.purchasedItems || []).map(i => i && i.name ? i.name : null).filter(Boolean))
   ])).sort();
 
+  // === ЭКРАН АВТОРИЗАЦИИ ===
   if (authState === 'logged_out') {
     const handleLogin = (e) => {
       e.preventDefault();
@@ -607,6 +659,7 @@ const App = () => {
     );
   }
 
+  // === ГЛАВНЫЙ ИНТЕРФЕЙС ===
   return (
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
@@ -668,16 +721,15 @@ const App = () => {
               </div>
               
               <div className="flex gap-2 justify-center">
-                <button onClick={() => handleProtectedAction(() => fileInputRef.current?.click())} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm"><Upload className="w-4 h-4" /> {t.import} CSV</button>
+                <button onClick={() => handleProtectedAction(() => fileInputRef.current?.click())} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm"><Upload className="w-4 h-4" /> {t.import}</button>
                 <button onClick={exportCSV} className="bg-[#107c41] hover:bg-[#188c4d] text-white px-4 p-2 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Excel"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
               </div>
             </div>
           </div>
         </div>
 
-        {}
+        {/* ПАНЕЛЬ УПРАВЛЕНИЯ (Поиск, Фильтр, Добавление) */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-[-20px] relative z-20">
-          
           {!showForm && (
             <div className="flex flex-col md:flex-row gap-4 mb-6">
               <button onClick={() => handleProtectedAction(() => { setNewClient(initialNewClientState); setEditingId(null); setShowForm(true); })} className="md:w-1/4 shrink-0 bg-white dark:bg-slate-800 text-rose-500 dark:text-rose-400 py-4 rounded-2xl font-bold shadow-md border-b-4 border-rose-200 dark:border-rose-900 flex items-center justify-center gap-2 hover:bg-rose-50 dark:hover:bg-slate-700 transition-all">
@@ -699,7 +751,7 @@ const App = () => {
             </div>
           )}
 
-          {}
+          {/* ФОРМА ДОБАВЛЕНИЯ / РЕДАКТИРОВАНИЯ */}
           {showForm && (
             <form onSubmit={addClient} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 mb-8 space-y-8 animate-in fade-in">
               <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
@@ -838,7 +890,7 @@ const App = () => {
             </form>
           )}
 
-          {}
+          {/* ВИД: СПИСОК */}
           {viewMode === 'list' && !showForm && (
             <div className="space-y-4 mt-8">
               {filteredClients.map(client => {
@@ -925,7 +977,7 @@ const App = () => {
             </div>
           )}
 
-          {}
+          {/* ВИД: КАНБАН */}
           {viewMode === 'kanban' && !showForm && (
              <div className="flex gap-4 overflow-x-auto pb-8 mt-8 min-h-[600px] items-start">
                {['Не связались', 'Думает', 'Внес предоплату', 'Готовится', 'Готов/Доставлен'].map(status => (
@@ -965,11 +1017,11 @@ const App = () => {
              </div>
           )}
 
-          {}
+          {/* ВИД: КАЛЕНДАРЬ */}
           {viewMode === 'calendar' && !showForm && (
             <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
               <div className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-xl border border-rose-100 dark:border-rose-900 mb-6 text-sm text-rose-800 dark:text-rose-200">
-                 💡 <b>Подсказка:</b> Календарь показывает текущий месяц. Нажимайте стрелочку «Вперед», чтобы посмотреть будущие заказы или импортированные даты из файла (Август, Сентябрь и т.д.).
+                 💡 <b>Подсказка:</b> Календарь показывает текущий месяц. Если вы импортировали клиентов с днями рождения в других месяцах (например, в августе или сентябре), нажимайте стрелочку «Вперед», чтобы их увидеть!
               </div>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-black text-xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-rose-500" /> {t.workload}</h3>
@@ -988,7 +1040,7 @@ const App = () => {
         </div>
       </div>
 
-      {}
+      {/* МОДАЛЬНОЕ ОКНО ДОСТУПА ГОСТЯ */}
       {showAccessModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
@@ -1006,6 +1058,7 @@ const App = () => {
         </div>
       )}
 
+      {/* WhatsApp ПОМОЩНИК */}
       {whatsappHelper.show && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl">
