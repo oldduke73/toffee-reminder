@@ -79,27 +79,25 @@ const statusMap = {
 const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
 
 const App = () => {
-  // Авторизация
+  // === АВТОРИЗАЦИЯ ===
   const [authState, setAuthState] = useState('logged_out'); 
   const [showAccessModal, setShowAccessModal] = useState(false);
-
-  // ИСПРАВЛЕНИЕ: Хуки формы входа должны быть на верхнем уровне, чтобы не нарушать правила React!
   const [loginInput, setLoginInput] = useState('');
   const [passInput, setPassInput] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Глобальные состояния
+  // === ДАННЫЕ И СОСТОЯНИЯ ===
   const [user, setUser] = useState(null);
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [lang, setLang] = useState('ru');
   const [theme, setTheme] = useState('light');
+  const [notification, setNotification] = useState('');
   const t = translations[lang];
 
-  // Данные
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
   
-  // UI состояния
+  // === ИНТЕРФЕЙС ===
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,6 +109,7 @@ const App = () => {
   const [orderInput, setOrderInput] = useState({ name: '', price: '' });
   const fileInputRef = useRef(null);
 
+  // Защита от действий Гостя
   const handleProtectedAction = (actionFn) => {
     if (authState === 'guest') {
       setShowAccessModal(true);
@@ -126,6 +125,7 @@ const App = () => {
   };
   const [newClient, setNewClient] = useState(initialNewClientState);
 
+  // Вспомогательные функции
   const getDaysLeft = (targetDate) => {
     if (!targetDate) return 999;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -181,7 +181,7 @@ const App = () => {
       const loadedClients = [];
       snapshot.forEach(doc => {
         const data = doc.data();
-        // ИСПРАВЛЕНИЕ: Жесткая санитария данных. Гарантируем, что undefined никогда не сломает интерфейс.
+        // ЖЕСТКИЙ САНИТАЙЗЕР: Убиваем все undefined
         loadedClients.push({ 
           id: doc.id,
           clientName: String(data.clientName || ""),
@@ -214,12 +214,13 @@ const App = () => {
     return () => { unsubscribeClients(); unsubscribeCatalog(); };
   }, [user, authState]);
 
+  // Фильтрация (Безопасная, не ломает экран)
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
       const query = String(searchQuery || "").toLowerCase();
       
       const nameMatch = client.clientName.toLowerCase().includes(query);
-      const phoneMatch = client.phone.includes(query);
+      const phoneMatch = client.phone.toLowerCase().includes(query);
       const itemsMatch = client.purchasedItems.some(item => 
         item && item.name && String(item.name).toLowerCase().includes(query)
       );
@@ -296,6 +297,8 @@ const App = () => {
         setNewClient(initialNewClientState);
         setShowForm(false);
         setEditingId(null);
+        setNotification('Успешно сохранено!');
+        setTimeout(() => setNotification(''), 3000);
       } catch (error) {
         console.error("Ошибка сохранения:", error);
       }
@@ -315,6 +318,8 @@ const App = () => {
     handleProtectedAction(async () => {
       try {
         await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString()));
+        setNotification('Удалено!');
+        setTimeout(() => setNotification(''), 3000);
       } catch (error) {
         console.error("Ошибка удаления:", error);
       }
@@ -363,6 +368,7 @@ const App = () => {
       const file = event.target.files[0];
       if (!file) return;
 
+      setNotification('Начинаем загрузку, подождите...');
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
@@ -372,6 +378,7 @@ const App = () => {
           const dataLines = lines.slice(1);
           
           let importCount = 0;
+          const promises = [];
 
           for (let i = 0; i < dataLines.length; i++) {
             const line = dataLines[i];
@@ -393,20 +400,42 @@ const App = () => {
               }
             }
 
-            const itemsStr = row[9] || "";
-            const items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim() || 'Без названия', price: 0 })) : [];
-            const tags = row[6] ? row[6].split(';').map(t => t.trim()).filter(Boolean) : [];
+            let items = [];
+            let isLoyal = false;
+            let status = "Не связались";
+            let price = 0;
+            let tags = [];
+            let prefs = "";
+            let isCustom = false;
+            let customDetails = "";
 
-            // ЗАЩИТА: Строгая типизация данных перед отправкой в Firebase
+            // АВТО-ОПРЕДЕЛЕНИЕ (4 КОЛОНКИ ИЛИ 11 КОЛОНОК)
+            if (row.length <= 5) {
+              // Формат: Имя, Телефон, Дата, Торт
+              items = row[3] ? [{ uniqueId: Date.now() + Math.random(), name: row[3].trim(), price: 0 }] : [];
+            } else {
+              // Полный формат 11 колонок
+              const itemsStr = row[9] || "";
+              items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim() || 'Без названия', price: 0 })) : [];
+              isLoyal = Boolean(row[3] === 'Да' || row[3] === 'да');
+              status = String(row[4] || "Не связались");
+              price = Number(parseInt(row[5])) || 0;
+              tags = row[6] ? row[6].split(';').map(t => t.trim()).filter(Boolean) : [];
+              prefs = String(row[7] || "");
+              isCustom = Boolean(row[10] && row[10].trim().length > 0);
+              customDetails = String(row[10] || "");
+            }
+
+            // ЗАЩИТА: Строгая типизация
             const newClientData = {
               id: Date.now().toString() + Math.random().toString().substring(2, 8),
               clientName: String(row[0] || "Без имени"),
               phone: String(row[1] || ""),
-              isLoyalClient: Boolean(row[3] === 'Да' || row[3] === 'да'),
-              currentOrderStatus: String(row[4] || "Не связались"),
-              totalPrice: Number(parseInt(row[5])) || 0,
+              isLoyalClient: isLoyal,
+              currentOrderStatus: status,
+              totalPrice: price,
               tags: tags,
-              preferences: String(row[7] || ""),
+              preferences: prefs,
               relatives: formattedDate ? [{ 
                 id: Date.now() + Math.random(), 
                 relation: 'Себе', 
@@ -416,16 +445,21 @@ const App = () => {
                 eventType: 'День рождения' 
               }] : [],
               purchasedItems: items,
-              isCustomOrder: Boolean(row[10] && row[10].trim().length > 0),
-              customOrderDetails: String(row[10] || "")
+              isCustomOrder: isCustom,
+              customOrderDetails: customDetails
             };
 
-            await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClientData.id), newClientData);
+            promises.push(setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClientData.id), newClientData));
             importCount++;
           }
-          console.log(`Успешно импортировано клиентов: ${importCount}`);
+
+          await Promise.all(promises);
+          setNotification(`Успешно загружено ${importCount} клиентов!`);
+          setTimeout(() => setNotification(''), 4000);
         } catch (error) { 
           console.error('Ошибка импорта CSV:', error); 
+          setNotification('Ошибка импорта! Проверьте консоль.');
+          setTimeout(() => setNotification(''), 4000);
         }
       };
       reader.readAsText(file, 'UTF-8');
@@ -560,6 +594,12 @@ const App = () => {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
         <input type="file" ref={fileInputRef} onChange={importData} accept=".csv" className="hidden" />
 
+        {notification && (
+            <div className="fixed bottom-6 right-6 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl z-50 flex items-center gap-3 animate-in slide-in-from-bottom-5 font-bold border border-emerald-400">
+              <Check className="w-6 h-6" /> {notification}
+            </div>
+        )}
+
         <div className="bg-gradient-to-r from-rose-500 to-pink-600 dark:from-rose-900 dark:to-pink-900 rounded-b-[40px] shadow-xl p-8 pt-12 relative overflow-hidden transition-colors duration-300">
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-center md:text-left flex flex-col items-center md:items-start">
@@ -617,6 +657,7 @@ const App = () => {
           </div>
         </div>
 
+        {}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-[-20px] relative z-20">
           
           {!showForm && (
@@ -640,6 +681,7 @@ const App = () => {
             </div>
           )}
 
+          {}
           {showForm && (
             <form onSubmit={addClient} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 mb-8 space-y-8 animate-in fade-in">
               <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
@@ -901,6 +943,9 @@ const App = () => {
 
           {viewMode === 'calendar' && !showForm && (
             <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+              <div className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-xl border border-rose-100 dark:border-rose-900 mb-6 text-sm text-rose-800 dark:text-rose-200">
+                 💡 <b>Подсказка:</b> Календарь показывает текущий месяц. Если вы импортировали клиентов с днями рождения в других месяцах (например, в августе или сентябре), нажимайте стрелочку «Вперед», чтобы их увидеть!
+              </div>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-black text-xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-rose-500" /> {t.workload}</h3>
                 <div className="flex items-center gap-4">
