@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -35,7 +35,7 @@ const translations = {
     relPhone: 'Телефон (Для сюрприза)', eventType: 'Событие', date: 'Дата *', addHoliday: '+ Добавить еще один праздник',
     currentOrder: 'Текущий заказ', prodName: 'Название товара', price: 'Цена (₸)',
     hint: 'Начните вводить или выберите из списка. Если впишете новое название, оно добавится в каталог автоматически.',
-    isCustom: '🎨 Это индивидуальный заказ (сложный дизайн)', customDetails: 'Опишите детали заказа...',
+    isCustom: '🎨 Это индивидуальный заказ', customDetails: 'Опишите детали заказа...',
     totalCheck: 'Итого по чеку:', saveChanges: 'СОХРАНИТЬ ИЗМЕНЕНИЯ', addClientBtn: 'ДОБАВИТЬ КЛИЕНТА В БАЗУ',
     msg: 'Сообщение', write: 'Написать', copy: 'Копировать', copied: 'Скопировано', today: 'СЕГОДНЯ!', inDays: (d) => `Через ${d} дн.`,
     customDetailsTitle: 'Индивидуальный заказ (Детали):', workload: 'Загруженность по дням', noHistory: 'Нет истории', receipt: 'Чек', sum: 'Сумма:',
@@ -80,7 +80,7 @@ const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без г�
 
 const App = () => {
   // Авторизация
-  const [authState, setAuthState] = useState('logged_out'); // 'logged_out', 'guest', 'admin'
+  const [authState, setAuthState] = useState('logged_out'); 
   const [showAccessModal, setShowAccessModal] = useState(false);
 
   // Глобальные состояния
@@ -97,10 +97,8 @@ const App = () => {
   // UI состояния
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
-  
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCake, setFilterCake] = useState('All');
-  
   const [editingId, setEditingId] = useState(null);
   const [viewMode, setViewMode] = useState('list'); 
   const [whatsappHelper, setWhatsappHelper] = useState({ show: false, client: null, draftText: '' });
@@ -145,7 +143,7 @@ const App = () => {
     });
     if (nearest.daysLeft === 999) {
        const sorted = [...safeRelatives].sort((a,b) => new Date(b.eventDate) - new Date(a.eventDate));
-       nearest = { daysLeft: getDaysLeft(sorted[0].eventDate), date: sorted[0].eventDate, name: sorted[0].relation };
+       nearest = { daysLeft: getDaysLeft(sorted[0]?.eventDate), date: sorted[0]?.eventDate, name: sorted[0]?.relation };
     }
     return nearest;
   };
@@ -155,7 +153,11 @@ const App = () => {
 
     const initAuth = async () => {
       try {
-        await signInAnonymously(auth);
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
       } catch (e) {
         console.error("Ошибка авторизации Firebase:", e);
       }
@@ -172,7 +174,17 @@ const App = () => {
     const clientsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'clients');
     const unsubscribeClients = onSnapshot(clientsRef, (snapshot) => {
       const loadedClients = [];
-      snapshot.forEach(doc => loadedClients.push({ ...doc.data(), id: doc.id }));
+      snapshot.forEach(doc => {
+        // ЗАЩИТА: Убеждаемся что нет undefined данных с сервера
+        const data = doc.data();
+        loadedClients.push({ 
+          ...data, 
+          id: doc.id,
+          purchasedItems: data.purchasedItems || [],
+          relatives: data.relatives || [],
+          tags: data.tags || []
+        });
+      });
       setClients(loadedClients);
       setIsDbConnected(true);
     }, (error) => {
@@ -193,13 +205,19 @@ const App = () => {
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
       const query = searchQuery.toLowerCase();
-      const matchesSearch = 
-        (client.clientName && client.clientName.toLowerCase().includes(query)) ||
-        (client.phone && client.phone.includes(query)) ||
-        (client.purchasedItems && client.purchasedItems.some(item => item.name.toLowerCase().includes(query)));
+      // Защита: проверяем существование clientName и phone перед toLowerCase
+      const nameMatch = client.clientName && client.clientName.toLowerCase().includes(query);
+      const phoneMatch = client.phone && client.phone.includes(query);
+      const itemsMatch = client.purchasedItems && client.purchasedItems.some(item => 
+        item && item.name && item.name.toLowerCase().includes(query)
+      );
+
+      const matchesSearch = nameMatch || phoneMatch || itemsMatch;
 
       const matchesFilter = filterCake === 'All' || 
-        (client.purchasedItems && client.purchasedItems.some(item => item.name.toUpperCase() === filterCake.toUpperCase()));
+        (client.purchasedItems && client.purchasedItems.some(item => 
+          item && item.name && item.name.toUpperCase() === filterCake.toUpperCase()
+        ));
 
       return matchesSearch && matchesFilter;
     });
@@ -235,7 +253,7 @@ const App = () => {
     const formattedName = orderInput.name.trim();
     const newItem = { uniqueId: Date.now(), name: formattedName, price: parseInt(orderInput.price) };
     const updatedItems = [...(newClient.purchasedItems || []), newItem];
-    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price), 0);
+    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price || 0), 0);
     setNewClient({ ...newClient, purchasedItems: updatedItems, totalPrice: updatedPrice });
     
     if (!catalog.includes(formattedName)) {
@@ -250,7 +268,7 @@ const App = () => {
 
   const removeOrderItem = (uniqueId) => {
     const updatedItems = (newClient.purchasedItems || []).filter(item => item.uniqueId !== uniqueId);
-    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price), 0);
+    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price || 0), 0);
     setNewClient({ ...newClient, purchasedItems: updatedItems, totalPrice: updatedPrice });
   };
 
@@ -306,15 +324,13 @@ const App = () => {
     const bom = "\uFEFF";
     let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
     clients.forEach(c => {
-      const itemsStr = (c.purchasedItems || []).map(i => i.name).join("; ");
+      const itemsStr = (c.purchasedItems || []).map(i => i.name || '').join("; ");
       const tagsStr = c.tags ? c.tags.join("; ") : "";
-      
       let mainBirthday = "";
       if (c.relatives && c.relatives.length > 0) {
         const selfRel = c.relatives.find(r => r.relation === 'Себе' || r.relation === 'Өзіме');
         if (selfRel) mainBirthday = selfRel.eventDate;
       }
-
       const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} [${r.eventDate}]`).join(" | ");
       const row = [
         `"${c.clientName || ''}"`, `"${c.phone || ''}"`, `"${mainBirthday}"`, 
@@ -348,7 +364,7 @@ const App = () => {
           for (let i = 0; i < dataLines.length; i++) {
             const line = dataLines[i];
             const row = line.split(delimiter).map(cell => cell ? cell.trim().replace(/^"|"$/g, '') : "");
-            if (!row[0]) continue; // Пропуск пустых имен
+            if (!row[0]) continue; 
 
             // Умный парсинг даты
             let formattedDate = "";
@@ -366,21 +382,21 @@ const App = () => {
             }
 
             const itemsStr = row[9] || "";
-            const items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim(), price: 0 })) : [];
-            const tags = row[6] ? row[6].split(';').map(t => t.trim()).filter(t => t) : [];
+            const items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim() || 'Без названия', price: 0 })) : [];
+            const tags = row[6] ? row[6].split(';').map(t => t.trim()).filter(Boolean) : [];
 
+            // ЗАЩИТА: Нет undefined данных
             const newClientData = {
               id: Date.now().toString() + i,
-              clientName: row[0] || "",
+              clientName: row[0] || "Без имени",
               phone: row[1] || "",
               isLoyalClient: row[3] === 'Да',
               currentOrderStatus: row[4] || "Не связались",
               totalPrice: parseInt(row[5]) || 0,
               tags: tags,
               preferences: row[7] || "",
-              relatives: formattedDate ? [{ id: Date.now(), relation: 'Себе', name: row[0] || "", phone: row[1] || "", eventDate: formattedDate, eventType: 'День рождения' }] : [],
+              relatives: formattedDate ? [{ id: Date.now() + Math.random(), relation: 'Себе', name: row[0] || "", phone: row[1] || "", eventDate: formattedDate, eventType: 'День рождения' }] : [],
               purchasedItems: items,
-              // Защита от undefined при импорте
               isCustomOrder: (row[10] && row[10].trim().length > 0) ? true : false,
               customOrderDetails: row[10] || ""
             };
@@ -388,13 +404,12 @@ const App = () => {
             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClientData.id), newClientData);
             importCount++;
           }
-          
           console.log(`Успешно импортировано клиентов: ${importCount}`);
         } catch (error) { 
           console.error('Ошибка импорта CSV:', error); 
         }
       };
-      reader.readAsText(file, 'UTF-8'); // Принудительно читаем в UTF-8
+      reader.readAsText(file, 'UTF-8');
       if (fileInputRef.current) fileInputRef.current.value = '';
     });
   };
@@ -463,7 +478,11 @@ const App = () => {
     return [...blanks, ...days];
   };
 
-  const allProductNames = Array.from(new Set([...catalog, ...clients.flatMap(c => (c.purchasedItems || []).map(i => i.name))])).sort();
+  // Защита для сбора имен продуктов
+  const allProductNames = Array.from(new Set([
+    ...catalog, 
+    ...clients.flatMap(c => (c.purchasedItems || []).map(i => i && i.name ? i.name : null).filter(Boolean))
+  ])).sort();
 
   if (authState === 'logged_out') {
     const [loginInput, setLoginInput] = useState('');
@@ -585,7 +604,6 @@ const App = () => {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-[-20px] relative z-20">
           
-          {}
           {!showForm && (
             <div className="flex flex-col md:flex-row gap-4 mb-6">
               <button onClick={() => handleProtectedAction(() => { setNewClient(initialNewClientState); setEditingId(null); setShowForm(true); })} className="md:w-1/4 shrink-0 bg-white dark:bg-slate-800 text-rose-500 dark:text-rose-400 py-4 rounded-2xl font-bold shadow-md border-b-4 border-rose-200 dark:border-rose-900 flex items-center justify-center gap-2 hover:bg-rose-50 dark:hover:bg-slate-700 transition-all">
@@ -607,7 +625,6 @@ const App = () => {
             </div>
           )}
 
-          {}
           {showForm && (
             <form onSubmit={addClient} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 mb-8 space-y-8 animate-in fade-in">
               <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
@@ -746,7 +763,6 @@ const App = () => {
             </form>
           )}
 
-          {}
           {viewMode === 'list' && !showForm && (
             <div className="space-y-4 mt-8">
               {filteredClients.map(client => {
@@ -805,12 +821,12 @@ const App = () => {
                         <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2">{t.receipt}</p>
                         {(client.purchasedItems || []).length > 0 ? (
                           <ul className="text-sm space-y-1 text-slate-700 dark:text-slate-300 font-medium mb-3">
-                            {client.purchasedItems.map(item => <li key={item.uniqueId}>• {item.name} ({item.price} ₸)</li>)}
+                            {client.purchasedItems.map(item => <li key={item.uniqueId}>• {item.name || 'Товар'} ({item.price || 0} ₸)</li>)}
                           </ul>
                         ) : <p className="text-sm text-slate-400 dark:text-slate-500 mb-3 italic">{t.noHistory}</p>}
                         <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
                           <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">{t.sum}</span>
-                          <span className="font-black text-slate-800 dark:text-white text-lg">{client.totalPrice} ₸</span>
+                          <span className="font-black text-slate-800 dark:text-white text-lg">{client.totalPrice || 0} ₸</span>
                         </div>
                       </div>
                     </div>
@@ -830,7 +846,6 @@ const App = () => {
             </div>
           )}
 
-          {}
           {viewMode === 'kanban' && !showForm && (
              <div className="flex gap-4 overflow-x-auto pb-8 mt-8 min-h-[600px] items-start">
                {['Не связались', 'Думает', 'Внес предоплату', 'Готовится', 'Готов/Доставлен'].map(status => (
@@ -857,7 +872,7 @@ const App = () => {
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{nearest.name} — {getFormatDate(nearest.date)}</p>
                           {client.purchasedItems && client.purchasedItems.length > 0 && (
                              <div className="mt-2 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded inline-block border border-blue-100 dark:border-blue-900/50">
-                               {client.purchasedItems[0].name}
+                               {client.purchasedItems[0].name || 'Товар'}
                              </div>
                           )}
                         </div>
@@ -869,7 +884,6 @@ const App = () => {
              </div>
           )}
 
-          {}
           {viewMode === 'calendar' && !showForm && (
             <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
               <div className="flex justify-between items-center mb-6">
@@ -889,7 +903,6 @@ const App = () => {
         </div>
       </div>
 
-      {}
       {showAccessModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
