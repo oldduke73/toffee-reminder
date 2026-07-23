@@ -29,7 +29,7 @@ const translations = {
     subtitle: 'Умная CRM для кондитерских', inBase: 'В базе', totalSales: 'Сумма чеков',
     list: 'Список', board: 'Доска', calendar: 'Календарь', import: 'Импорт', export: 'Экспорт',
     addClient: 'Добавить клиента', search: 'Поиск по базе...', editCard: 'Редактировать карточку',
-    newClient: 'Новый клиент', basicData: 'Основные данные', name: 'Имя *', phone: 'Телефон *',
+    newClient: 'Новый клиент', basicData: 'Основные данные', name: 'Имя', phone: 'Телефон *',
     vip: 'VIP Клиент', allergies: 'Аллергии (Теги)', preferences: 'Предпочтения (Текст)',
     holidays: 'Праздники и Близкие', whoIsEvent: 'Кому праздник', relName: 'Имя близкого',
     relPhone: 'Телефон (Для сюрприза)', eventType: 'Событие', date: 'Дата *', addHoliday: '+ Добавить еще один праздник',
@@ -46,7 +46,7 @@ const translations = {
     subtitle: 'Кондитерлерге арналған ақылды CRM', inBase: 'Базада', totalSales: 'Жалпы сома',
     list: 'Тізім', board: 'Тақта', calendar: 'Күнтізбе', import: 'Импорт', export: 'Экспорт',
     addClient: 'Клиент қосу', search: 'Базадан іздеу...', editCard: 'Карточканы өңдеу',
-    newClient: 'Жаңа клиент', basicData: 'Негізгі деректер', name: 'Аты *', phone: 'Телефон *',
+    newClient: 'Жаңа клиент', basicData: 'Негізгі деректер', name: 'Аты', phone: 'Телефон *',
     vip: 'VIP Клиент', allergies: 'Аллергия (Тегтер)', preferences: 'Қалаулары (Мәтін)',
     holidays: 'Мерекелер мен Жақындары', whoIsEvent: 'Кімнің мерекесі', relName: 'Жақынының аты',
     relPhone: 'Телефоны (Сыйлық үшін)', eventType: 'Оқиға', date: 'Күні *', addHoliday: '+ Тағы бір мереке қосу',
@@ -79,14 +79,12 @@ const statusMap = {
 const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
 
 const App = () => {
-  // === АВТОРИЗАЦИЯ ===
   const [authState, setAuthState] = useState('logged_out'); 
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [passInput, setPassInput] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // === ДАННЫЕ И СОСТОЯНИЯ ===
   const [user, setUser] = useState(null);
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [lang, setLang] = useState('ru');
@@ -97,7 +95,6 @@ const App = () => {
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
   
-  // === ИНТЕРФЕЙС ===
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,7 +106,6 @@ const App = () => {
   const [orderInput, setOrderInput] = useState({ name: '', price: '' });
   const fileInputRef = useRef(null);
 
-  // Защита от действий Гостя
   const handleProtectedAction = (actionFn) => {
     if (authState === 'guest') {
       setShowAccessModal(true);
@@ -125,7 +121,6 @@ const App = () => {
   };
   const [newClient, setNewClient] = useState(initialNewClientState);
 
-  // Вспомогательные функции
   const getDaysLeft = (targetDate) => {
     if (!targetDate) return 999;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -181,7 +176,6 @@ const App = () => {
       const loadedClients = [];
       snapshot.forEach(doc => {
         const data = doc.data();
-        // ЖЕСТКИЙ САНИТАЙЗЕР: Убиваем все undefined
         loadedClients.push({ 
           id: doc.id,
           clientName: String(data.clientName || ""),
@@ -214,7 +208,6 @@ const App = () => {
     return () => { unsubscribeClients(); unsubscribeCatalog(); };
   }, [user, authState]);
 
-  // Фильтрация (Безопасная, не ломает экран)
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
       const query = String(searchQuery || "").toLowerCase();
@@ -237,6 +230,14 @@ const App = () => {
   }, [clients, searchQuery, filterCake]);
 
   const totalSales = clients.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
+
+  const getDisplayName = (client) => {
+    // Умная функция: если имени нет или оно испорчено "???", показываем номер телефона
+    if (client.clientName && client.clientName.trim() !== "" && client.clientName.trim() !== "Без имени" && !client.clientName.includes("?")) {
+      return client.clientName;
+    }
+    return client.phone || "Неизвестно";
+  };
 
   const handlePhoneChange = (e) => {
     let input = e.target.value.replace(/\D/g, ''); if (input.length === 0) input = '7'; if (input[0] !== '7') input = '7' + input; input = input.substring(0, 11);
@@ -288,9 +289,16 @@ const App = () => {
   const addClient = async (e) => {
     e.preventDefault();
     handleProtectedAction(async () => {
-      if (!newClient.clientName || newClient.phone.length < 18) return;
+      // Имя больше не обязательно. Главное - чтобы был номер телефона.
+      if (newClient.phone.length < 18) {
+        setNotification('Введите номер телефона полностью');
+        setTimeout(() => setNotification(''), 3000);
+        return;
+      }
+      
+      const finalClientName = newClient.clientName && newClient.clientName.trim() !== '' ? newClient.clientName : 'Без имени';
       const clientId = editingId ? editingId.toString() : Date.now().toString();
-      const clientData = { ...newClient, id: clientId };
+      const clientData = { ...newClient, clientName: finalClientName, id: clientId };
       
       try {
         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', clientId), clientData);
@@ -383,7 +391,9 @@ const App = () => {
           for (let i = 0; i < dataLines.length; i++) {
             const line = dataLines[i];
             const row = line.split(delimiter).map(cell => cell ? cell.trim().replace(/^"|"$/g, '') : "");
-            if (!row[0]) continue; 
+            
+            // Если нет ни имени, ни телефона, ни даты - пропускаем мусорную строку
+            if (!row[0] && !row[1] && !row[2]) continue; 
 
             // Умный парсинг даты
             let formattedDate = "";
@@ -411,7 +421,7 @@ const App = () => {
 
             // АВТО-ОПРЕДЕЛЕНИЕ (4 КОЛОНКИ ИЛИ 11 КОЛОНОК)
             if (row.length <= 5) {
-              // Формат: Имя, Телефон, Дата, Торт
+              // Короткий формат (Имя, Телефон, Дата, Торт)
               items = row[3] ? [{ uniqueId: Date.now() + Math.random(), name: row[3].trim(), price: 0 }] : [];
             } else {
               // Полный формат 11 колонок
@@ -427,9 +437,12 @@ const App = () => {
             }
 
             // ЗАЩИТА: Строгая типизация
+            // Если имени нет, сохраняем как "Без имени" (отображаться будет телефон)
+            const finalClientName = row[0] && row[0].trim() !== "" ? String(row[0]) : "Без имени";
+
             const newClientData = {
               id: Date.now().toString() + Math.random().toString().substring(2, 8),
-              clientName: String(row[0] || "Без имени"),
+              clientName: finalClientName,
               phone: String(row[1] || ""),
               isLoyalClient: isLoyal,
               currentOrderStatus: status,
@@ -439,7 +452,7 @@ const App = () => {
               relatives: formattedDate ? [{ 
                 id: Date.now() + Math.random(), 
                 relation: 'Себе', 
-                name: String(row[0] || "Без имени"), 
+                name: finalClientName, 
                 phone: String(row[1] || ""), 
                 eventDate: formattedDate, 
                 eventType: 'День рождения' 
@@ -482,7 +495,8 @@ const App = () => {
     const nearest = getNearestEvent(client.relatives);
     let timeText = nearest.daysLeft === 0 ? "уже сегодня" : nearest.daysLeft === 1 ? "завтра" : `через ${nearest.daysLeft} дн.`;
     let itemsText = (client.purchasedItems && client.purchasedItems.length > 0) ? `В прошлом году вы брали у нас ${client.purchasedItems[0].name.toLowerCase()}.` : "";
-    const draftText = `Здравствуйте, ${client.clientName}! \nПишу вам, чтобы помочь с подготовкой: ${timeText} праздник (${nearest.name}). \n${itemsText} \nСделать для вас подборку начинок и свободных окошек на эту дату?`;
+    const clientDisplay = getDisplayName(client);
+    const draftText = `Здравствуйте${clientDisplay !== 'Неизвестно' ? ', ' + clientDisplay : ''}! \nПишу вам, чтобы помочь с подготовкой: ${timeText} праздник (${nearest.name}). \n${itemsText} \nСделать для вас подборку начинок и свободных окошек на эту дату?`;
     setWhatsappHelper({ show: true, client, draftText });
   };
   
@@ -497,7 +511,7 @@ const App = () => {
     const prefStr = client.preferences ? `\n📝 Предпочтения: ${client.preferences}` : '';
     const customOrderStr = client.isCustomOrder ? `\n🎨 ИНДИВИДУАЛЬНЫЙ ЗАКАЗ:\n${client.customOrderDetails}` : '';
     const relativesList = (client.relatives || []).map(r => `  - ${r.relation} ${r.name || ''} ${r.phone ? `📞 ${r.phone}` : ''} (${getFormatDate(r.eventDate)})`).join('\n');
-    const textToCopy = `👤 Имя: ${client.clientName} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}\n📅 Праздники близких:\n${relativesList}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
+    const textToCopy = `👤 Имя: ${getDisplayName(client)} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}\n📅 Праздники близких:\n${relativesList}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
     try {
         const textArea = document.createElement("textarea"); textArea.value = textToCopy; document.body.appendChild(textArea); textArea.focus(); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea);
         setCopiedId(client.id); setTimeout(() => setCopiedId(null), 2000);
@@ -515,15 +529,19 @@ const App = () => {
       const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
       const eventsOnThisDay = [];
       filteredClients.forEach(c => (c.relatives || []).forEach(rel => { if (rel.eventDate === dateStr) eventsOnThisDay.push({ client: c, rel: rel }); }));
+      
       return (
         <div key={d} className={`min-h-[80px] p-2 rounded-xl border flex flex-col ${eventsOnThisDay.length > 0 ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700'}`}>
           <span className={`text-sm font-bold ${eventsOnThisDay.length > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>{d}</span>
           <div className="mt-1 flex flex-col gap-1">
-            {eventsOnThisDay.map((e, idx) => (
-              <div key={idx} onClick={() => editClientClick(e.client)} className="text-[10px] font-bold text-white bg-rose-500 rounded px-1.5 py-1 truncate cursor-pointer hover:bg-rose-600 shadow-sm" title={`${e.client.clientName} (${e.rel.relation})`}>
-                {e.client.clientName}
-              </div>
-            ))}
+            {eventsOnThisDay.map((e, idx) => {
+              const displayTitle = getDisplayName(e.client);
+              return (
+                <div key={idx} onClick={() => editClientClick(e.client)} className="text-[10px] font-bold text-white bg-rose-500 rounded px-1.5 py-1 truncate cursor-pointer hover:bg-rose-600 shadow-sm" title={`${displayTitle} (${e.rel.relation})`}>
+                  {displayTitle}
+                </div>
+              )
+            })}
           </div>
         </div>
       );
@@ -669,7 +687,7 @@ const App = () => {
               <div className="flex-1 flex flex-col md:flex-row gap-2">
                 <div className="relative flex-1">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search className="h-5 w-5 text-slate-400" /></div>
-                  <input type="text" placeholder="Поиск (Имя, Телефон, Торт)..." className="w-full h-full min-h-[56px] pl-11 pr-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-rose-400 dark:focus:border-rose-500 outline-none shadow-sm text-slate-700 dark:text-slate-200 font-medium" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                  <input type="text" placeholder="Поиск (Номер, Имя, Торт)..." className="w-full h-full min-h-[56px] pl-11 pr-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-rose-400 dark:focus:border-rose-500 outline-none shadow-sm text-slate-700 dark:text-slate-200 font-medium" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                 </div>
                 <div className="relative md:w-64">
                    <select value={filterCake} onChange={(e) => setFilterCake(e.target.value)} className="w-full h-full min-h-[56px] px-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-rose-400 outline-none shadow-sm text-slate-700 dark:text-slate-200 font-bold appearance-none cursor-pointer">
@@ -696,7 +714,7 @@ const App = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">{t.name}</label>
-                      <input required type="text" className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none dark:text-white" value={newClient.clientName} onChange={e => setNewClient({...newClient, clientName: e.target.value})} />
+                      <input type="text" className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none dark:text-white" value={newClient.clientName} onChange={e => setNewClient({...newClient, clientName: e.target.value})} placeholder="Опционально" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 uppercase">{t.phone}</label>
@@ -820,11 +838,13 @@ const App = () => {
             </form>
           )}
 
+          {}
           {viewMode === 'list' && !showForm && (
             <div className="space-y-4 mt-8">
               {filteredClients.map(client => {
                 const nearestEvent = getNearestEvent(client.relatives);
                 const isUrgent = nearestEvent.daysLeft >= 0 && nearestEvent.daysLeft <= 5;
+                const clientDisplayName = getDisplayName(client);
 
                 return (
                   <div key={client.id} className={`bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border-2 transition-all ${isUrgent ? 'border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-900/10' : 'border-slate-100 dark:border-slate-700'}`}>
@@ -833,9 +853,11 @@ const App = () => {
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-                              {client.clientName} {client.isLoyalClient && <Star className="w-5 h-5 fill-amber-400 text-amber-400"/>}
+                              {clientDisplayName} {client.isLoyalClient && <Star className="w-5 h-5 fill-amber-400 text-amber-400"/>}
                             </h3>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{client.phone}</p>
+                            {client.clientName && client.clientName !== "Без имени" && (
+                              <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{client.phone}</p>
+                            )}
                           </div>
                           <div className="flex flex-col items-end">
                             {isUrgent && (
@@ -903,6 +925,7 @@ const App = () => {
             </div>
           )}
 
+          {}
           {viewMode === 'kanban' && !showForm && (
              <div className="flex gap-4 overflow-x-auto pb-8 mt-8 min-h-[600px] items-start">
                {['Не связались', 'Думает', 'Внес предоплату', 'Готовится', 'Готов/Доставлен'].map(status => (
@@ -920,11 +943,12 @@ const App = () => {
                   <div className="p-3 flex flex-col gap-3 flex-1 min-h-[100px]">
                     {filteredClients.filter(c => (c.currentOrderStatus || 'Не связались') === status).map(client => {
                       const nearest = getNearestEvent(client.relatives);
+                      const displayTitle = getDisplayName(client);
                       return (
                         <div key={client.id} draggable onDragStart={(e) => onDragStart(e, client.id)} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-grab hover:shadow-md transition-shadow relative group">
                           <GripHorizontal className="w-4 h-4 text-slate-300 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                           <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1">
-                            {client.clientName} {client.isLoyalClient && <Star className="w-3 h-3 fill-amber-400 text-amber-400"/>}
+                            {displayTitle} {client.isLoyalClient && <Star className="w-3 h-3 fill-amber-400 text-amber-400"/>}
                           </h4>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{nearest.name} — {getFormatDate(nearest.date)}</p>
                           {client.purchasedItems && client.purchasedItems.length > 0 && (
@@ -941,10 +965,11 @@ const App = () => {
              </div>
           )}
 
+          {}
           {viewMode === 'calendar' && !showForm && (
             <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
               <div className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-xl border border-rose-100 dark:border-rose-900 mb-6 text-sm text-rose-800 dark:text-rose-200">
-                 💡 <b>Подсказка:</b> Календарь показывает текущий месяц. Если вы импортировали клиентов с днями рождения в других месяцах (например, в августе или сентябре), нажимайте стрелочку «Вперед», чтобы их увидеть!
+                 💡 <b>Подсказка:</b> Календарь показывает текущий месяц. Нажимайте стрелочку «Вперед», чтобы посмотреть будущие заказы или импортированные даты из файла (Август, Сентябрь и т.д.).
               </div>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-black text-xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-rose-500" /> {t.workload}</h3>
@@ -963,6 +988,7 @@ const App = () => {
         </div>
       </div>
 
+      {}
       {showAccessModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
