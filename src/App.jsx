@@ -85,28 +85,20 @@ const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без г�
 // ОСНОВНОЙ КОМПОНЕНТ ПРИЛОЖЕНИЯ
 // ==========================================
 const App = () => {
-  // === Состояния авторизации ===
   const [authState, setAuthState] = useState('logged_out'); 
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [passInput, setPassInput] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // === Состояния Firebase и БД ===
-  const [user, setUser] = useState(null);
   const [isDbConnected, setIsDbConnected] = useState(false);
-  
-  // === Состояния интерфейса ===
   const [lang, setLang] = useState('ru');
   const [theme, setTheme] = useState('light');
   const [notification, setNotification] = useState('');
   const t = translations[lang];
 
-  // === Данные ===
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
-  
-  // === Формы и поиск ===
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,7 +117,7 @@ const App = () => {
   };
   const [newClient, setNewClient] = useState(initialNewClientState);
 
-  // === Умная защита действий (Гость / Админ) ===
+  // Умная защита действий (Гость / Админ)
   const handleProtectedAction = (actionFn) => {
     if (authState === 'guest') {
       setShowAccessModal(true);
@@ -134,7 +126,6 @@ const App = () => {
     actionFn();
   };
 
-  // === Вспомогательные функции дат ===
   const getDaysLeft = (targetDate) => {
     if (!targetDate) return 999;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -162,71 +153,93 @@ const App = () => {
     return nearest;
   };
 
-  // === Подключение к Firebase ===
+  // ИСПРАВЛЕНИЕ: Единый монолитный эффект для Auth и DB (Устраняет гонку состояний и бесконечный Sync)
   useEffect(() => {
     if (authState === 'logged_out') return;
 
-    const initAuth = async () => {
+    let unsubscribeClients = () => {};
+    let unsubscribeCatalog = () => {};
+    let unsubscribeAuth = () => {};
+
+    const initFirebasePipeline = async () => {
       try {
+        // 1. Быстрая авторизация
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
+
+        // 2. Как только Auth подтвержден, сразу подтягиваем базу
+        unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+          if (currentUser) {
+            const clientsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'clients');
+            
+            unsubscribeClients = onSnapshot(clientsRef, (snapshot) => {
+              try {
+                const loadedClients = [];
+                snapshot.forEach(docSnap => {
+                  try {
+                    const data = docSnap.data();
+                    // АБСОЛЮТНАЯ ЗАЩИТА (Санитайзер)
+                    loadedClients.push({ 
+                      id: docSnap.id,
+                      clientName: String(data.clientName || ""),
+                      phone: String(data.phone || ""),
+                      isLoyalClient: Boolean(data.isLoyalClient),
+                      tags: Array.isArray(data.tags) ? data.tags : [],
+                      preferences: String(data.preferences || ""),
+                      relatives: Array.isArray(data.relatives) ? data.relatives : [],
+                      isCustomOrder: Boolean(data.isCustomOrder),
+                      customOrderDetails: String(data.customOrderDetails || ""),
+                      purchasedItems: Array.isArray(data.purchasedItems) ? data.purchasedItems : [],
+                      totalPrice: Number(data.totalPrice) || 0,
+                      currentOrderStatus: String(data.currentOrderStatus || "Не связались"),
+                      clientBirthday: String(data.clientBirthday || "") 
+                    });
+                  } catch (itemErr) {
+                    console.error("Пропущена битая карточка", itemErr);
+                  }
+                });
+                
+                setClients(loadedClients);
+                setIsDbConnected(true); // УРА, СИНХРОНИЗАЦИЯ УСПЕШНА!
+              } catch (snapshotErr) {
+                console.error("Фатальная ошибка парсинга", snapshotErr);
+                setIsDbConnected(false);
+              }
+            }, (error) => {
+              console.error("Ошибка загрузки клиентов Firestore", error);
+              setIsDbConnected(false);
+            });
+
+            const catalogRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog');
+            unsubscribeCatalog = onSnapshot(catalogRef, (docSnap) => {
+              if (docSnap.exists() && docSnap.data().items) {
+                setCatalog(docSnap.data().items);
+              }
+            });
+          } else {
+            setIsDbConnected(false); // Юзер разлогинился
+          }
+        });
+
       } catch (e) {
-        console.error("Ошибка авторизации Firebase:", e);
+        console.error("Ошибка инициализации Firebase конвейера:", e);
+        setIsDbConnected(false);
       }
     };
-    initAuth();
-    
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, [authState]);
 
-  // === Загрузка данных из БД ===
-  useEffect(() => {
-    if (!user || authState === 'logged_out') return;
-    
-    const clientsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'clients');
-    const unsubscribeClients = onSnapshot(clientsRef, (snapshot) => {
-      const loadedClients = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        // САНИТАЙЗЕР: Строгая проверка всех полей, чтобы не было белого экрана
-        loadedClients.push({ 
-          id: doc.id,
-          clientName: String(data.clientName || ""),
-          phone: String(data.phone || ""),
-          isLoyalClient: Boolean(data.isLoyalClient),
-          tags: Array.isArray(data.tags) ? data.tags : [],
-          preferences: String(data.preferences || ""),
-          relatives: Array.isArray(data.relatives) ? data.relatives : [],
-          isCustomOrder: Boolean(data.isCustomOrder),
-          customOrderDetails: String(data.customOrderDetails || ""),
-          purchasedItems: Array.isArray(data.purchasedItems) ? data.purchasedItems : [],
-          totalPrice: Number(data.totalPrice) || 0,
-          currentOrderStatus: String(data.currentOrderStatus || "Не связались"),
-          clientBirthday: String(data.clientBirthday || "") // Для совместимости со старыми импортами
-        });
-      });
-      setClients(loadedClients);
-      setIsDbConnected(true);
-    }, (error) => {
-      console.error("Ошибка загрузки клиентов", error);
-      setIsDbConnected(false);
-    });
+    initFirebasePipeline();
 
-    const catalogRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog');
-    const unsubscribeCatalog = onSnapshot(catalogRef, (docSnap) => {
-      if (docSnap.exists() && docSnap.data().items) {
-        setCatalog(docSnap.data().items);
-      }
-    }, (error) => console.error("Ошибка загрузки каталога", error));
+    // Очистка при закрытии или выходе
+    return () => {
+      unsubscribeAuth();
+      unsubscribeClients();
+      unsubscribeCatalog();
+    };
+  }, [authState]); // Зависит только от AuthState, нет гонки с User State
 
-    return () => { unsubscribeClients(); unsubscribeCatalog(); };
-  }, [user, authState]);
-
-  // === ФИЛЬТРАЦИЯ КЛИЕНТОВ (Поиск + Торты) ===
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
       const query = String(searchQuery || "").toLowerCase();
@@ -250,15 +263,13 @@ const App = () => {
 
   const totalSales = clients.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
 
-  // === Умное отображение имени ===
   const getDisplayName = (client) => {
     if (client.clientName && client.clientName.trim() !== "" && client.clientName.trim() !== "Без имени" && !client.clientName.includes("?")) {
       return client.clientName;
     }
-    return client.phone || "Неизвестно"; // Если имени нет, показываем телефон!
+    return client.phone || "Неизвестно"; 
   };
 
-  // === Обработчики форм ===
   const handlePhoneChange = (e) => {
     let input = e.target.value.replace(/\D/g, ''); if (input.length === 0) input = '7'; if (input[0] !== '7') input = '7' + input; input = input.substring(0, 11);
     let formatted = '+7 '; if (input.length > 1) formatted += '(' + input.substring(1, 4); if (input.length >= 5) formatted += ') ' + input.substring(4, 7); if (input.length >= 8) formatted += '-' + input.substring(7, 9); if (input.length >= 10) formatted += '-' + input.substring(9, 11);
@@ -306,7 +317,6 @@ const App = () => {
     setNewClient({ ...newClient, purchasedItems: updatedItems, totalPrice: updatedPrice });
   };
 
-  // === Сохранение клиента ===
   const addClient = async (e) => {
     e.preventDefault();
     handleProtectedAction(async () => {
@@ -365,14 +375,13 @@ const App = () => {
     });
   };
 
-  // === ЭКСПОРТ В EXCEL ===
   const exportCSV = () => {
     const bom = "\uFEFF";
     let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
     clients.forEach(c => {
       const itemsStr = (c.purchasedItems || []).map(i => i?.name || '').join("; ");
       const tagsStr = c.tags ? c.tags.join("; ") : "";
-      let mainBirthday = c.clientBirthday || ""; // Берем из корня, если есть
+      let mainBirthday = c.clientBirthday || ""; 
       if (c.relatives && c.relatives.length > 0) {
         const selfRel = c.relatives.find(r => r.relation === 'Себе' || r.relation === 'Өзіме');
         if (selfRel) mainBirthday = selfRel.eventDate;
@@ -392,7 +401,6 @@ const App = () => {
     link.click(); URL.revokeObjectURL(url);
   };
 
-  // === УМНЫЙ ИМПОРТ ===
   const importData = (event) => {
     handleProtectedAction(() => {
       const file = event.target.files[0];
@@ -403,7 +411,7 @@ const App = () => {
       reader.onload = async (e) => {
         try {
           const text = e.target.result;
-          const delimiter = text.includes(';') ? ';' : ','; // Умное определение разделителя
+          const delimiter = text.includes(';') ? ';' : ',';
           const lines = text.split('\n').filter(line => line.trim() !== '');
           const dataLines = lines.slice(1);
           
@@ -414,19 +422,15 @@ const App = () => {
             const line = dataLines[i];
             const row = line.split(delimiter).map(cell => cell ? cell.trim().replace(/^"|"$/g, '') : "");
             
-            // Если нет телефона и даты - пропускаем мусор. ИМЯ не обязательно!
             if (!row[1] && !row[2]) continue; 
 
-            // Умный парсинг даты
             let formattedDate = "";
             if (row[2]) {
               const dateStr = row[2].trim();
               if (/^\d{1,2}\.\d{1,2}$/.test(dateStr)) {
-                // ДД.ММ -> 2026-ММ-ДД
                 const [day, month] = dateStr.split('.');
                 formattedDate = `2026-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
               } else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateStr)) {
-                // ДД.ММ.ГГГГ -> ГГГГ-ММ-ДД
                 const [day, month, year] = dateStr.split('.');
                 formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
               } else {
@@ -448,12 +452,9 @@ const App = () => {
             let isCustom = false;
             let customDetails = "";
 
-            // АВТО-ОПРЕДЕЛЕНИЕ ФОРМАТА ФАЙЛА (4 ИЛИ 11 КОЛОНОК)
             if (row.length <= 5) {
-              // Короткий формат
               items = row[3] ? [{ uniqueId: Date.now() + Math.random(), name: row[3].trim(), price: 0 }] : [];
             } else {
-              // Полный формат 11 колонок
               const itemsStr = row[9] || "";
               items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim() || 'Без названия', price: 0 })) : [];
               isLoyal = Boolean(row[3] === 'Да' || row[3] === 'да');
@@ -467,7 +468,6 @@ const App = () => {
 
             const finalClientName = row[0] && row[0].trim() !== "" ? String(row[0]) : "Без имени";
 
-            // Правильное сохранение даты для Календаря!
             const relativesArray = formattedDate ? [{ 
                 id: Date.now() + Math.random(), 
                 relation: 'Себе', 
@@ -486,8 +486,8 @@ const App = () => {
               totalPrice: price,
               tags: tags,
               preferences: prefs,
-              relatives: relativesArray, // Дата теперь тут!
-              clientBirthday: formattedDate, // И тут (на всякий случай)
+              relatives: relativesArray,
+              clientBirthday: formattedDate,
               purchasedItems: items,
               isCustomOrder: isCustom,
               customOrderDetails: customDetails
@@ -511,7 +511,6 @@ const App = () => {
     });
   };
 
-  // === Drag and Drop для Канбана ===
   const onDragStart = (e, clientId) => {
     if (authState === 'guest') { e.preventDefault(); handleProtectedAction(() => {}); return; }
     e.dataTransfer.setData('clientId', clientId.toString());
@@ -523,7 +522,6 @@ const App = () => {
     changeOrderStatus(clientId, targetStatus);
   };
 
-  // === Интеграция с WhatsApp ===
   const openWhatsAppHelper = (client) => {
     const nearest = getNearestEvent(client.relatives);
     let timeText = nearest.daysLeft === 0 ? "уже сегодня" : nearest.daysLeft === 1 ? "завтра" : `через ${nearest.daysLeft} дн.`;
@@ -551,7 +549,6 @@ const App = () => {
     } catch (err) {}
   };
 
-  // === УМНЫЙ РЕНДЕР КАЛЕНДАРЯ ===
   const renderCalendarDays = () => {
     const year = calendarDate.getFullYear(); const month = calendarDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -564,17 +561,13 @@ const App = () => {
       const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
       const eventsOnThisDay = [];
       
-      // Ищем совпадения по всем клиентам
       filteredClients.forEach(c => {
-        // 1. Ищем в relatives (правильный способ)
         (c.relatives || []).forEach(rel => { 
           if (rel?.eventDate === dateStr) {
             eventsOnThisDay.push({ client: c, rel: rel }); 
           }
         });
-        // 2. Ищем в корне (резервный способ для старых баз, чтобы вы не удаляли старые данные!)
         if (c.clientBirthday === dateStr) {
-           // Добавляем, только если этого клиента еще нет в списке на этот день
            if (!eventsOnThisDay.some(e => e.client.id === c.id)) {
              eventsOnThisDay.push({ client: c, rel: { relation: 'Себе', name: c.clientName }});
            }
@@ -605,7 +598,6 @@ const App = () => {
     ...clients.flatMap(c => (c.purchasedItems || []).map(i => i && i.name ? i.name : null).filter(Boolean))
   ])).sort();
 
-  // === ЭКРАН АВТОРИЗАЦИИ ===
   if (authState === 'logged_out') {
     const handleLogin = (e) => {
       e.preventDefault();
@@ -659,7 +651,6 @@ const App = () => {
     );
   }
 
-  // === ГЛАВНЫЙ ИНТЕРФЕЙС ===
   return (
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
@@ -685,7 +676,7 @@ const App = () => {
                  </span>
                  {isDbConnected ? 
                    <span className="flex items-center gap-1 text-[10px] font-bold bg-blue-500/20 text-blue-100 px-2 py-0.5 rounded-full border border-blue-400/30"><Cloud className="w-3 h-3"/> Online</span> :
-                   <span className="flex items-center gap-1 text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-full border border-white/30"><CloudOff className="w-3 h-3"/> Sync...</span>
+                   <span className="flex items-center gap-1 text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-full border border-white/30 animate-pulse"><CloudOff className="w-3 h-3"/> Sync...</span>
                  }
               </div>
               
