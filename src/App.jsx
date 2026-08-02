@@ -1,12 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Trash2, Calendar, Phone, MessageCircle, ShoppingBag, User, AlertCircle, Check, Copy, X, Star, Download, Upload, Search, Edit3, FileSpreadsheet, Kanban, List, GripHorizontal, Info, Sun, Moon, Globe, Cloud, CloudOff } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { 
+  Plus, Trash2, Calendar, Phone, MessageCircle, ShoppingBag, User, 
+  AlertCircle, Check, Copy, X, Star, Download, Upload, Search, 
+  Edit3, FileSpreadsheet, Kanban, List, GripHorizontal, Sun, Moon, 
+  Globe, Cloud, CloudOff, Lock, Unlock, LogOut, Cake 
+} from 'lucide-react';
 
-// --- ИМПОРТЫ FIREBASE ---
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+// === ИМПОРТЫ FIREBASE ===
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
+import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
 
-// --- ВАШИ НАСТРОЙКИ FIREBASE ---
+// === ВАШИ НАСТРОЙКИ FIREBASE ===
 const firebaseConfig = {
   apiKey: "AIzaSyAJroZn4GiNALqV36xq9ge1AJy2NXX_7qY",
   authDomain: "toffee-reminder-crm.firebaseapp.com",
@@ -21,10 +26,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const APP_ID = 'toffee-crm';
 
+// === ПЕРЕВОДЫ ===
 const translations = {
   ru: {
     subtitle: 'Умная CRM для кондитерских', inBase: 'В базе', totalSales: 'Сумма чеков',
-    list: 'Список', board: 'Доска', calendar: 'Календарь', import: 'Импорт', export: 'Экспорт',
+    list: 'Список', board: 'Доска', calendar: 'Календарь', import: 'Импорт CSV', export: 'Экспорт',
     addClient: 'Добавить клиента', search: 'Поиск по базе...', editCard: 'Редактировать карточку',
     newClient: 'Новый клиент', basicData: 'Основные данные', name: 'Имя', phone: 'Телефон *',
     vip: 'VIP Клиент', allergies: 'Аллергии (Теги)', preferences: 'Предпочтения (Текст)',
@@ -32,66 +38,85 @@ const translations = {
     relPhone: 'Телефон (Для сюрприза)', eventType: 'Событие', date: 'Дата *', addHoliday: '+ Добавить еще один праздник',
     currentOrder: 'Текущий заказ', prodName: 'Название товара', price: 'Цена (₸)',
     hint: 'Начните вводить или выберите из списка. Если впишете новое название, оно добавится в каталог автоматически.',
-    isCustom: '🎨 Это индивидуальный заказ (сложный дизайн)', customDetails: 'Опишите детали заказа: тематика, ярусы, референсы, фигурки, надпись...',
+    isCustom: '🎨 Это индивидуальный заказ', customDetails: 'Опишите детали заказа...',
     totalCheck: 'Итого по чеку:', saveChanges: 'СОХРАНИТЬ ИЗМЕНЕНИЯ', addClientBtn: 'ДОБАВИТЬ КЛИЕНТА В БАЗУ',
-    msg: 'Сообщение', editDraft: 'Отредактируйте черновик перед отправкой', sendWa: 'Отправить в WhatsApp',
-    tips: 'Советы:', tip1: 'Польза, а не спам. Не пишите "у нас акция". Пишите "решил помочь с выбором".',
-    tip2: 'Покажите заботу. Упоминание прошлого заказа показывает, что клиент важен.', tip3: 'Один вопрос. Закройте текст простым вопросом.',
-    workload: 'Загруженность по дням', noHistory: 'Нет истории покупок', receipt: 'Заказ / Чек', sum: 'Сумма:',
-    write: 'Написать', copy: 'Копировать', copied: 'Скопировано', today: 'СЕГОДНЯ!', inDays: (d) => `Через ${d} дн.`,
-    customDetailsTitle: 'Индивидуальный заказ (Детали):',
+    msg: 'Сообщение', write: 'Написать', copy: 'Копировать', copied: 'Скопировано', today: 'СЕГОДНЯ!', inDays: (d) => `Через ${d} дн.`,
+    customDetailsTitle: 'Индивидуальный заказ (Детали):', workload: 'Загруженность по дням', noHistory: 'Нет истории', receipt: 'Чек', sum: 'Сумма:',
     relationOptions: ['Себе', 'Жене', 'Мужу', 'Сыну', 'Дочери', 'Маме', 'Папе', 'Брату', 'Сестре', 'Другу', 'Другу семьи', 'Коллеге', 'Родственнику'],
     eventOptions: ['День рождения', 'Годовщина', 'Юбилей', 'Другое']
   },
   kz: {
     subtitle: 'Кондитерлерге арналған ақылды CRM', inBase: 'Базада', totalSales: 'Жалпы сома',
-    list: 'Тізім', board: 'Тақта', calendar: 'Күнтізбе', import: 'Импорт', export: 'Экспорт',
+    list: 'Тізім', board: 'Тақта', calendar: 'Күнтізбе', import: 'Импорт CSV', export: 'Экспорт',
     addClient: 'Клиент қосу', search: 'Базадан іздеу...', editCard: 'Карточканы өңдеу',
     newClient: 'Жаңа клиент', basicData: 'Негізгі деректер', name: 'Аты', phone: 'Телефон *',
     vip: 'VIP Клиент', allergies: 'Аллергия (Тегтер)', preferences: 'Қалаулары (Мәтін)',
     holidays: 'Мерекелер мен Жақындары', whoIsEvent: 'Кімнің мерекесі', relName: 'Жақынының аты',
     relPhone: 'Телефоны (Сыйлық үшін)', eventType: 'Оқиға', date: 'Күні *', addHoliday: '+ Тағы бір мереке қосу',
     currentOrder: 'Ағымдағы тапсырыс', prodName: 'Тауар атауы', price: 'Бағасы (₸)',
-    hint: 'Енгізуді бастаңыз немесе тізімнен таңдаңыз. Жаңа атау жазсаңыз, ол каталогқа автоматты қосылады.',
-    isCustom: '🎨 Бұл жеке тапсырыс (күрделі дизайн)', customDetails: 'Тапсырыс мәліметтерін сипаттаңыз: тақырып, қабаттар, фигуралар, жазу...',
-    totalCheck: 'Чек бойынша барлығы:', saveChanges: 'ӨЗГЕРІСТЕРДІ САҚТАУ', addClientBtn: 'КЛИЕНТТІ БАЗАҒА ҚОСУ',
-    msg: 'Хабарлама', editDraft: 'Жібермес бұрын мәтінді өңдеңіз', sendWa: 'WhatsApp-қа жіберу',
-    tips: 'Кеңестер:', tip1: 'Спам емес, пайда әкеліңіз. "Бізде акция" деп жазбаңыз. "Таңдауға көмектесейін" деп жазыңыз.',
-    tip2: 'Қамқорлық көрсетіңіз. Өткен тапсырысты еске алу клиенттің маңыздылығын көрсетеді.', tip3: 'Бір сұрақ. Мәтінді қарапайым сұрақпен аяқтаңыз.',
-    workload: 'Күндер бойынша жүктеме', noHistory: 'Сатып алу тарихы жоқ', receipt: 'Тапсырыс / Чек', sum: 'Сомасы:',
-    write: 'Жазу', copy: 'Көшіру', copied: 'Көшірілді', today: 'БҮГІН!', inDays: (d) => `${d} күннен кейін`,
-    customDetailsTitle: 'Жеке тапсырыс (Мәліметтер):',
+    hint: 'Енгізуді бастаңыз немесе тізімнен таңдаңыз...',
+    isCustom: '🎨 Бұл жеке тапсырыс', customDetails: 'Тапсырыс мәліметтерін сипаттаңыз...',
+    totalCheck: 'Барлығы:', saveChanges: 'ӨЗГЕРІСТЕРДІ САҚТАУ', addClientBtn: 'КЛИЕНТТІ БАЗАҒА ҚОСУ',
+    msg: 'Хабарлама', write: 'Жазу', copy: 'Көшіру', copied: 'Көшірілді', today: 'БҮГІН!', inDays: (d) => `${d} күннен кейін`,
+    customDetailsTitle: 'Жеке тапсырыс (Мәліметтер):', workload: 'Күндер бойынша жүктеме', noHistory: 'Тарихы жоқ', receipt: 'Чек', sum: 'Сомасы:',
     relationOptions: ['Өзіме', 'Әйеліме', 'Күйеуіме', 'Ұлыма', 'Қызыма', 'Анама', 'Әкеме', 'Ағама/Ініме', 'Әпкеме/Қарындасыма', 'Досыма', 'Отбасы досына', 'Әріптесіме', 'Туысыма'],
     eventOptions: ['Туған күн', 'Мерейтой (Годовщина)', 'Мерейтой (Юбилей)', 'Басқа']
   }
 };
 
+const initialCatalog = [
+  "МОЛОЧНАЯ ДЕВОЧКА", "ШОКОЛАДНЫЙ ПЛОМБИР", "СНИКЕРС", "НУТЕЛЛА", "НАПОЛЕОН", "МЕДОВИК", "ЧИЗКЕЙК ИСПАНСКИЙ", "ПИРОГ 23СМ", "ПИРОГ 18СМ", "ТРАЙФЛ", 
+  "МОТИ", "ЭКЛЕР", "МИНИ ИСПАНСКИЙ", "МАКАРОНС", "КРУАССАН КУРИНЫЙ", "КРУАССАН СЕМГА", "КРУАССАН НУТЕЛЛА", "КРУАССАН ФИСТАШКА", "КРУАССАН КЛУБНИКА", 
+  "КРУАССАН ОРЕО", "КРУАССАН СЫР", "КРУАССАН КЛАССИКА", "КОРПУСНЫЙ ФИСТАШКА", "КОРПУСНЫЙ КОКОС", "КОРПУСНЫЙ МАНГО", "КОРПУСНЫЙ МАЛИНА", "КОРПУСНЫЙ ЧЕРНИКА", 
+  "КОРПУСНЫЙ КРУАССАН", "БЕНТО ТОРТ", "ФРЕЗЬЕ", "МИНИДЕСЕРТЫ", "МЕРЕНГОВЫЙ РУЛЕТ"
+];
+
+const statusMap = {
+  'Не связались': 'Не связались',
+  'Думает': 'Думает',
+  'Внес предоплату': 'Внес предоплату',
+  'Готовится': 'Готовится',
+  'Готов/Доставлен': 'Завершен'
+};
+
+const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
+
+// ==========================================
+// ОСНОВНОЙ КОМПОНЕНТ ПРИЛОЖЕНИЯ
+// ==========================================
 const App = () => {
+  // === Состояния авторизации ===
+  const [authState, setAuthState] = useState('logged_out'); 
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [loginInput, setLoginInput] = useState('');
+  const [passInput, setPassInput] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  // === Состояния Firebase и БД ===
   const [user, setUser] = useState(null);
   const [isDbConnected, setIsDbConnected] = useState(false);
+  
+  // === Состояния интерфейса ===
   const [lang, setLang] = useState('ru');
   const [theme, setTheme] = useState('light');
+  const [notification, setNotification] = useState('');
   const t = translations[lang];
 
-  const initialCatalog = [
-    "Молочная девочка", "Шоколадный пломбир", "Сникерс", "Нутелла", "Наполеон", "Медовик", "Чизкейк испанский", "Пирог 23см", "Пирог 18см", "Трайфл", 
-    "Моти", "Эклер", "Мини испанский", "Макаронс", "Круассан куриный", "Круассан семга", "Круассан нутелла", "Круассан фисташка", "Круассан клубника", 
-    "Круассан орео", "Круассан сыр", "Круассан классика", "Корпусный фисташка", "Корпусный кокос", "Корпусный манго", "Корпусный малина", "Корпусный черника", 
-    "Корпусный круассан", "Бенто торт", "Фрезье", "Минидесерты", "Меренговый рулет"
-  ];
+  // === Данные ===
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
-
+  
+  // === Формы и поиск ===
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterCake, setFilterCake] = useState('All');
   const [editingId, setEditingId] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); 
+  const [viewMode, setViewMode] = useState('kanban'); 
   const [whatsappHelper, setWhatsappHelper] = useState({ show: false, client: null, draftText: '' });
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [orderInput, setOrderInput] = useState({ name: '', price: '' });
-  
-  const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без глютена', '🟢 Веган', '🔵 Без сахара', '🟣 Без лактозы'];
+  const fileInputRef = useRef(null);
 
   const initialNewClientState = { 
     clientName: '', phone: '+7 ', isLoyalClient: false, tags: [], preferences: '',
@@ -99,33 +124,89 @@ const App = () => {
     isCustomOrder: false, customOrderDetails: '', purchasedItems: [], totalPrice: 0, currentOrderStatus: 'Не связались'
   };
   const [newClient, setNewClient] = useState(initialNewClientState);
-  const fileInputRef = useRef(null);
 
+  // === Умная защита действий (Гость / Админ) ===
+  const handleProtectedAction = (actionFn) => {
+    if (authState === 'guest') {
+      setShowAccessModal(true);
+      return;
+    }
+    actionFn();
+  };
+
+  // === Вспомогательные функции дат ===
+  const getDaysLeft = (targetDate) => {
+    if (!targetDate) return 999;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const event = new Date(targetDate); event.setHours(0, 0, 0, 0);
+    return Math.ceil((event - today) / (1000 * 60 * 60 * 24));
+  };
+
+  const getFormatDate = (dateString) => {
+    if (!dateString) return lang === 'ru' ? 'Нет данных' : 'Мәлімет жоқ';
+    return new Date(dateString).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'kk-KZ', { day: '2-digit', month: 'long', year: 'numeric' });
+  };
+
+  const getNearestEvent = (relatives) => {
+    const safeRelatives = Array.isArray(relatives) ? relatives : [];
+    if (safeRelatives.length === 0) return { daysLeft: 999, date: null, name: '' };
+    let nearest = { daysLeft: 999, date: null, name: '' };
+    safeRelatives.forEach(rel => {
+      const days = getDaysLeft(rel?.eventDate);
+      if (days >= 0 && days < nearest.daysLeft) nearest = { daysLeft: days, date: rel?.eventDate, name: rel?.relation + (rel?.name ? ` (${rel.name})` : '') };
+    });
+    if (nearest.daysLeft === 999) {
+       const sorted = [...safeRelatives].sort((a,b) => new Date(b?.eventDate) - new Date(a?.eventDate));
+       nearest = { daysLeft: getDaysLeft(sorted[0]?.eventDate), date: sorted[0]?.eventDate, name: sorted[0]?.relation };
+    }
+    return nearest;
+  };
+
+  // === Подключение к Firebase ===
   useEffect(() => {
+    if (authState === 'logged_out') return;
+
     const initAuth = async () => {
-      try { await signInAnonymously(auth); } catch (e) { console.error("Ошибка авторизации Firebase:", e); }
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (e) {
+        console.error("Ошибка авторизации Firebase:", e);
+      }
     };
     initAuth();
+    
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
-  }, []);
+  }, [authState]);
 
+  // === Загрузка данных из БД ===
   useEffect(() => {
-    if (!user) return;
+    if (!user || authState === 'logged_out') return;
+    
     const clientsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'clients');
     const unsubscribeClients = onSnapshot(clientsRef, (snapshot) => {
       const loadedClients = [];
-      snapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        // ЗАЩИТА ОТ БЕЛОГО ЭКРАНА: Всегда подставляем пустую строку/массив, если данных нет
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        // САНИТАЙЗЕР: Строгая проверка всех полей, чтобы не было белого экрана
         loadedClients.push({ 
-          ...data, 
-          id: docSnap.id,
-          clientName: data.clientName || "",
-          phone: data.phone || "",
-          purchasedItems: data.purchasedItems || [],
-          relatives: data.relatives || [],
-          tags: data.tags || []
+          id: doc.id,
+          clientName: String(data.clientName || ""),
+          phone: String(data.phone || ""),
+          isLoyalClient: Boolean(data.isLoyalClient),
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          preferences: String(data.preferences || ""),
+          relatives: Array.isArray(data.relatives) ? data.relatives : [],
+          isCustomOrder: Boolean(data.isCustomOrder),
+          customOrderDetails: String(data.customOrderDetails || ""),
+          purchasedItems: Array.isArray(data.purchasedItems) ? data.purchasedItems : [],
+          totalPrice: Number(data.totalPrice) || 0,
+          currentOrderStatus: String(data.currentOrderStatus || "Не связались"),
+          clientBirthday: String(data.clientBirthday || "") // Для совместимости со старыми импортами
         });
       });
       setClients(loadedClients);
@@ -143,45 +224,41 @@ const App = () => {
     }, (error) => console.error("Ошибка загрузки каталога", error));
 
     return () => { unsubscribeClients(); unsubscribeCatalog(); };
-  }, [user]);
+  }, [user, authState]);
 
-  const getDaysLeft = (targetDate) => {
-    if (!targetDate) return 999;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const event = new Date(targetDate); event.setHours(0, 0, 0, 0);
-    return Math.ceil((event - today) / (1000 * 60 * 60 * 24));
-  };
+  // === ФИЛЬТРАЦИЯ КЛИЕНТОВ (Поиск + Торты) ===
+  const filteredClients = useMemo(() => {
+    return clients.filter(client => {
+      const query = String(searchQuery || "").toLowerCase();
+      
+      const nameMatch = client.clientName.toLowerCase().includes(query);
+      const phoneMatch = client.phone.toLowerCase().includes(query);
+      const itemsMatch = client.purchasedItems.some(item => 
+        item && item.name && String(item.name).toLowerCase().includes(query)
+      );
 
-  const getFormatDate = (dateString) => {
-    if (!dateString) return lang === 'ru' ? 'Нет данных' : 'Мәлімет жоқ';
-    return new Date(dateString).toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'kk-KZ', { day: '2-digit', month: 'long', year: 'numeric' });
-  };
+      const matchesSearch = nameMatch || phoneMatch || itemsMatch;
 
-  const getNearestEvent = (relatives) => {
-    const safeRelatives = relatives || [];
-    if (safeRelatives.length === 0) return { daysLeft: 999, date: null, name: '' };
-    let nearest = { daysLeft: 999, date: null, name: '' };
-    safeRelatives.forEach(rel => {
-      const days = getDaysLeft(rel.eventDate);
-      if (days >= 0 && days < nearest.daysLeft) nearest = { daysLeft: days, date: rel.eventDate, name: rel.relation + (rel.name ? ` (${rel.name})` : '') };
+      const matchesFilter = filterCake === 'All' || 
+        client.purchasedItems.some(item => 
+          item && item.name && String(item.name).toUpperCase() === String(filterCake).toUpperCase()
+        );
+
+      return matchesSearch && matchesFilter;
     });
-    if (nearest.daysLeft === 999) {
-       const sorted = [...safeRelatives].sort((a,b) => new Date(b.eventDate) - new Date(a.eventDate));
-       nearest = { daysLeft: getDaysLeft(sorted[0].eventDate), date: sorted[0].eventDate, name: sorted[0].relation };
-    }
-    return nearest;
-  };
+  }, [clients, searchQuery, filterCake]);
 
   const totalSales = clients.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
-  
-  // Безопасная фильтрация (даже если нет имени)
-  const filteredClients = clients.filter(c => {
-    const q = searchQuery.toLowerCase();
-    const name = c.clientName || "";
-    const phone = c.phone || "";
-    return name.toLowerCase().includes(q) || phone.includes(q);
-  });
 
+  // === Умное отображение имени ===
+  const getDisplayName = (client) => {
+    if (client.clientName && client.clientName.trim() !== "" && client.clientName.trim() !== "Без имени" && !client.clientName.includes("?")) {
+      return client.clientName;
+    }
+    return client.phone || "Неизвестно"; // Если имени нет, показываем телефон!
+  };
+
+  // === Обработчики форм ===
   const handlePhoneChange = (e) => {
     let input = e.target.value.replace(/\D/g, ''); if (input.length === 0) input = '7'; if (input[0] !== '7') input = '7' + input; input = input.substring(0, 11);
     let formatted = '+7 '; if (input.length > 1) formatted += '(' + input.substring(1, 4); if (input.length >= 5) formatted += ') ' + input.substring(4, 7); if (input.length >= 8) formatted += '-' + input.substring(7, 9); if (input.length >= 10) formatted += '-' + input.substring(9, 11);
@@ -197,6 +274,7 @@ const App = () => {
   const addRelative = () => setNewClient({ ...newClient, relatives: [...(newClient.relatives || []), { id: Date.now(), relation: 'Другу', name: '', phone: '', eventDate: '', eventType: 'День рождения' }] });
   const updateRelative = (id, field, value) => setNewClient({ ...newClient, relatives: (newClient.relatives || []).map(rel => rel.id === id ? { ...rel, [field]: value } : rel) });
   const removeRelative = (id) => setNewClient({ ...newClient, relatives: (newClient.relatives || []).filter(rel => rel.id !== id) });
+  
   const toggleTag = (tag) => {
     const currentTags = newClient.tags || [];
     if (currentTags.includes(tag)) setNewClient({ ...newClient, tags: currentTags.filter(t => t !== tag) });
@@ -209,184 +287,312 @@ const App = () => {
     const formattedName = orderInput.name.trim();
     const newItem = { uniqueId: Date.now(), name: formattedName, price: parseInt(orderInput.price) };
     const updatedItems = [...(newClient.purchasedItems || []), newItem];
-    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price), 0);
+    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price || 0), 0);
     setNewClient({ ...newClient, purchasedItems: updatedItems, totalPrice: updatedPrice });
     
     if (!catalog.includes(formattedName)) {
       const newCatalog = [...catalog, formattedName];
       setCatalog(newCatalog);
-      try { await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: newCatalog }); } catch(e) {}
+      try {
+         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog'), { items: newCatalog });
+      } catch(e) {}
     }
     setOrderInput({ name: '', price: '' });
   };
 
   const removeOrderItem = (uniqueId) => {
     const updatedItems = (newClient.purchasedItems || []).filter(item => item.uniqueId !== uniqueId);
-    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price), 0);
+    const updatedPrice = updatedItems.reduce((sum, item) => sum + parseInt(item.price || 0), 0);
     setNewClient({ ...newClient, purchasedItems: updatedItems, totalPrice: updatedPrice });
   };
 
+  // === Сохранение клиента ===
   const addClient = async (e) => {
     e.preventDefault();
-    if (newClient.phone.length < 18) return;
-    const clientId = editingId ? editingId.toString() : Date.now().toString();
-    const clientData = { ...newClient, id: clientId };
-    try {
-      await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', clientId), clientData);
-      setNewClient(initialNewClientState);
-      setShowForm(false);
-      setEditingId(null);
-    } catch (error) { console.error("Ошибка при сохранении", error); }
+    handleProtectedAction(async () => {
+      if (newClient.phone.length < 18) {
+        setNotification('Введите номер телефона полностью');
+        setTimeout(() => setNotification(''), 3000);
+        return;
+      }
+      
+      const finalClientName = newClient.clientName && newClient.clientName.trim() !== '' ? newClient.clientName : 'Без имени';
+      const clientId = editingId ? editingId.toString() : Date.now().toString();
+      const clientData = { ...newClient, clientName: finalClientName, id: clientId };
+      
+      try {
+        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', clientId), clientData);
+        setNewClient(initialNewClientState);
+        setShowForm(false);
+        setEditingId(null);
+        setNotification('Успешно сохранено!');
+        setTimeout(() => setNotification(''), 3000);
+      } catch (error) {
+        console.error("Ошибка сохранения:", error);
+      }
+    });
   };
 
   const editClientClick = (client) => {
-    setNewClient({ ...client, tags: client.tags || [], relatives: client.relatives || [], purchasedItems: client.purchasedItems || [] });
-    setEditingId(client.id);
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    handleProtectedAction(() => {
+      setNewClient({ ...client, tags: client.tags || [], relatives: client.relatives || [], purchasedItems: client.purchasedItems || [] });
+      setEditingId(client.id);
+      setShowForm(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
   };
 
-  const deleteClient = async (id) => {
-    try { await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString())); } catch (error) { console.error(error); }
+  const deleteClient = (id) => {
+    handleProtectedAction(async () => {
+      try {
+        await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString()));
+        setNotification('Удалено!');
+        setTimeout(() => setNotification(''), 3000);
+      } catch (error) {
+        console.error("Ошибка удаления:", error);
+      }
+    });
   };
   
-  const changeOrderStatus = async (id, newStatus) => {
-    try {
-      const clientToUpdate = clients.find(c => c.id === id);
-      if (clientToUpdate) await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString()), { ...clientToUpdate, currentOrderStatus: newStatus });
-    } catch(e) { console.error(e); }
+  const changeOrderStatus = (id, newStatus) => {
+    handleProtectedAction(async () => {
+      try {
+        const clientToUpdate = clients.find(c => c.id === id);
+        if (clientToUpdate) {
+          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', id.toString()), { ...clientToUpdate, currentOrderStatus: newStatus });
+        }
+      } catch(e) {}
+    });
   };
 
+  // === ЭКСПОРТ В EXCEL ===
   const exportCSV = () => {
     const bom = "\uFEFF";
-    let csvContent = bom + "Имя,Телефон,Близкие и Праздники,Сумма чека,VIP,Статус,Диета,Предпочтения,Индив.заказ,Детали инд.заказа,Товары\n";
+    let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
     clients.forEach(c => {
-      const itemsStr = (c.purchasedItems || []).map(i => i.name).join("; ");
+      const itemsStr = (c.purchasedItems || []).map(i => i?.name || '').join("; ");
       const tagsStr = c.tags ? c.tags.join("; ") : "";
-      const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} ${r.phone ? `(${r.phone})` : ''} [${r.eventDate}]`).join(" | ");
-      const row = [`"${c.clientName}"`, `"${c.phone}"`, `"${relativesStr}"`, c.totalPrice, c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, `"${tagsStr}"`, `"${c.preferences || ''}"`, c.isCustomOrder ? "Да" : "Нет", `"${c.customOrderDetails || ''}"`, `"${itemsStr}"`].join(",");
+      let mainBirthday = c.clientBirthday || ""; // Берем из корня, если есть
+      if (c.relatives && c.relatives.length > 0) {
+        const selfRel = c.relatives.find(r => r.relation === 'Себе' || r.relation === 'Өзіме');
+        if (selfRel) mainBirthday = selfRel.eventDate;
+      }
+      const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} [${r.eventDate}]`).join(" | ");
+      const row = [
+        `"${c.clientName || ''}"`, `"${c.phone || ''}"`, `"${mainBirthday}"`, 
+        c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, 
+        c.totalPrice || 0, `"${tagsStr}"`, `"${c.preferences || ''}"`, 
+        `"${relativesStr}"`, `"${itemsStr}"`, `"${c.customOrderDetails || ''}"`
+      ].join(",");
       csvContent += row + "\n";
     });
     const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
-    const link = document.createElement('a'); link.href = url; link.download = `toffee_clients_table_${new Date().toLocaleDateString('ru-RU')}.csv`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; 
+    link.download = `toffee_clients_${new Date().toLocaleDateString('ru-RU')}.csv`; 
+    link.click(); URL.revokeObjectURL(url);
   };
 
-  const importData = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const text = e.target.result;
-        const delimiter = text.includes(';') ? ';' : ',';
-        const lines = text.split('\n').filter(line => line.trim() !== '');
-        const dataLines = lines.slice(1);
-        
-        for (let i = 0; i < dataLines.length; i++) {
-          const row = dataLines[i].split(delimiter).map(cell => cell ? cell.trim().replace(/^"|"$/g, '') : "");
-          // Не пропускаем пустые имена, сохраняем по номеру
-          if (!row[0] && !row[1]) continue; 
+  // === УМНЫЙ ИМПОРТ ===
+  const importData = (event) => {
+    handleProtectedAction(() => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      setNotification('Начинаем загрузку, подождите...');
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const text = e.target.result;
+          const delimiter = text.includes(';') ? ';' : ','; // Умное определение разделителя
+          const lines = text.split('\n').filter(line => line.trim() !== '');
+          const dataLines = lines.slice(1);
           
-          let formattedDate = "";
-          const dateStr = row[2];
-          if (dateStr) {
-             if (/^\d{1,2}\.\d{1,2}$/.test(dateStr)) {
-               const [d, m] = dateStr.split('.'); formattedDate = `2026-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-             } else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateStr)) {
-               const [d, m, y] = dateStr.split('.'); formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-             } else { formattedDate = dateStr; }
+          let importCount = 0;
+          const promises = [];
+
+          for (let i = 0; i < dataLines.length; i++) {
+            const line = dataLines[i];
+            const row = line.split(delimiter).map(cell => cell ? cell.trim().replace(/^"|"$/g, '') : "");
+            
+            // Если нет телефона и даты - пропускаем мусор. ИМЯ не обязательно!
+            if (!row[1] && !row[2]) continue; 
+
+            // Умный парсинг даты
+            let formattedDate = "";
+            if (row[2]) {
+              const dateStr = row[2].trim();
+              if (/^\d{1,2}\.\d{1,2}$/.test(dateStr)) {
+                // ДД.ММ -> 2026-ММ-ДД
+                const [day, month] = dateStr.split('.');
+                formattedDate = `2026-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+              } else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateStr)) {
+                // ДД.ММ.ГГГГ -> ГГГГ-ММ-ДД
+                const [day, month, year] = dateStr.split('.');
+                formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+              } else {
+                 const d = new Date(dateStr);
+                 if (!isNaN(d.getTime())) {
+                     formattedDate = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+                 } else {
+                     formattedDate = dateStr; 
+                 }
+              }
+            }
+
+            let items = [];
+            let isLoyal = false;
+            let status = "Не связались";
+            let price = 0;
+            let tags = [];
+            let prefs = "";
+            let isCustom = false;
+            let customDetails = "";
+
+            // АВТО-ОПРЕДЕЛЕНИЕ ФОРМАТА ФАЙЛА (4 ИЛИ 11 КОЛОНОК)
+            if (row.length <= 5) {
+              // Короткий формат
+              items = row[3] ? [{ uniqueId: Date.now() + Math.random(), name: row[3].trim(), price: 0 }] : [];
+            } else {
+              // Полный формат 11 колонок
+              const itemsStr = row[9] || "";
+              items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim() || 'Без названия', price: 0 })) : [];
+              isLoyal = Boolean(row[3] === 'Да' || row[3] === 'да');
+              status = String(row[4] || "Не связались");
+              price = Number(parseInt(row[5])) || 0;
+              tags = row[6] ? row[6].split(';').map(t => t.trim()).filter(Boolean) : [];
+              prefs = String(row[7] || "");
+              isCustom = Boolean(row[10] && row[10].trim().length > 0);
+              customDetails = String(row[10] || "");
+            }
+
+            const finalClientName = row[0] && row[0].trim() !== "" ? String(row[0]) : "Без имени";
+
+            // Правильное сохранение даты для Календаря!
+            const relativesArray = formattedDate ? [{ 
+                id: Date.now() + Math.random(), 
+                relation: 'Себе', 
+                name: finalClientName === "Без имени" ? "" : finalClientName, 
+                phone: String(row[1] || ""), 
+                eventDate: formattedDate, 
+                eventType: 'День рождения' 
+            }] : [];
+
+            const newClientData = {
+              id: Date.now().toString() + Math.random().toString().substring(2, 8),
+              clientName: finalClientName,
+              phone: String(row[1] || ""),
+              isLoyalClient: isLoyal,
+              currentOrderStatus: status,
+              totalPrice: price,
+              tags: tags,
+              preferences: prefs,
+              relatives: relativesArray, // Дата теперь тут!
+              clientBirthday: formattedDate, // И тут (на всякий случай)
+              purchasedItems: items,
+              isCustomOrder: isCustom,
+              customOrderDetails: customDetails
+            };
+
+            promises.push(setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClientData.id), newClientData));
+            importCount++;
           }
 
-          const cakeName = row[3] || "";
-          const purchasedItems = cakeName ? [{ uniqueId: Date.now() + i, name: cakeName, price: 0 }] : [];
-          
-          // Добавляем дату в массив родственников для корректного отображения в календаре
-          const relatives = formattedDate ? [{ id: Date.now()+i, relation: 'Себе', name: row[0]||'', phone: row[1]||'', eventDate: formattedDate, eventType: 'День рождения' }] : [];
-
-          const newClientData = {
-            id: `imp-${Date.now()}-${i}`,
-            clientName: row[0] || "",
-            phone: row[1] || "",
-            clientBirthday: formattedDate,
-            isLoyalClient: false,
-            tags: [],
-            preferences: "",
-            relatives: relatives,
-            isCustomOrder: false,
-            customOrderDetails: "",
-            purchasedItems: purchasedItems,
-            totalPrice: 0,
-            currentOrderStatus: "Не связались"
-          };
-          await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClientData.id), newClientData);
+          await Promise.all(promises);
+          setNotification(`Успешно загружено ${importCount} клиентов!`);
+          setTimeout(() => setNotification(''), 4000);
+        } catch (error) { 
+          console.error('Ошибка импорта CSV:', error); 
+          setNotification('Ошибка импорта! Проверьте консоль.');
+          setTimeout(() => setNotification(''), 4000);
         }
-      } catch (error) { console.error('Ошибка импорта', error); }
-    };
-    reader.readAsText(file, 'UTF-8');
-    if (fileInputRef.current) fileInputRef.current.value = '';
+      };
+      reader.readAsText(file, 'UTF-8');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    });
   };
 
-  const statusMap = {
-    'Не связались': lang === 'kz' ? 'Байланыс жоқ' : 'Связи нет',
-    'Думает': lang === 'kz' ? 'Ойлануда' : 'Думает',
-    'Внес предоплату': lang === 'kz' ? 'Алдын ала төлем' : 'Предоплата',
-    'Готовится': lang === 'kz' ? 'Дайындалуда' : 'В производстве',
-    'Готов/Доставлен': lang === 'kz' ? 'Дайын/Жеткізілді' : 'Завершен'
+  // === Drag and Drop для Канбана ===
+  const onDragStart = (e, clientId) => {
+    if (authState === 'guest') { e.preventDefault(); handleProtectedAction(() => {}); return; }
+    e.dataTransfer.setData('clientId', clientId.toString());
   };
-
-  const onDragStart = (e, clientId) => e.dataTransfer.setData('clientId', clientId.toString());
   const onDragOver = (e) => e.preventDefault();
   const onDrop = (e, targetStatus) => {
+    if (authState === 'guest') return;
     const clientId = e.dataTransfer.getData('clientId');
     changeOrderStatus(clientId, targetStatus);
   };
 
+  // === Интеграция с WhatsApp ===
   const openWhatsAppHelper = (client) => {
     const nearest = getNearestEvent(client.relatives);
     let timeText = nearest.daysLeft === 0 ? "уже сегодня" : nearest.daysLeft === 1 ? "завтра" : `через ${nearest.daysLeft} дн.`;
     let itemsText = (client.purchasedItems && client.purchasedItems.length > 0) ? `В прошлом году вы брали у нас ${client.purchasedItems[0].name.toLowerCase()}.` : "";
-    const nameStr = client.clientName ? `, ${client.clientName}` : '';
-    const draftText = `Здравствуйте${nameStr}! \nПишу вам, чтобы помочь с подготовкой: ${timeText} праздник (${nearest.name}). \n${itemsText} \nСделать для вас подборку начинок и свободных окошек на эту дату?`;
+    const clientDisplay = getDisplayName(client);
+    const draftText = `Здравствуйте${clientDisplay !== 'Неизвестно' ? ', ' + clientDisplay : ''}! \nПишу вам, чтобы помочь с подготовкой: ${timeText} праздник (${nearest.name}). \n${itemsText} \nСделать для вас подборку начинок и свободных окошек на эту дату?`;
     setWhatsappHelper({ show: true, client, draftText });
   };
+  
   const sendToWhatsApp = () => {
     window.open(`https://wa.me/${whatsappHelper.client.phone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappHelper.draftText)}`, '_blank');
     setWhatsappHelper({ show: false, client: null, draftText: '' });
   };
 
   const copyToClipboard = (client) => {
-    const itemsList = (client.purchasedItems || []).map(i => `- ${i.name} (${i.price} ₸)`).join('\n');
+    const itemsList = (client.purchasedItems || []).map(i => `- ${i?.name} (${i?.price} ₸)`).join('\n');
     const tagsStr = client.tags && client.tags.length > 0 ? `\n⚠️ Особенности: ${client.tags.join(', ')}` : '';
     const prefStr = client.preferences ? `\n📝 Предпочтения: ${client.preferences}` : '';
     const customOrderStr = client.isCustomOrder ? `\n🎨 ИНДИВИДУАЛЬНЫЙ ЗАКАЗ:\n${client.customOrderDetails}` : '';
-    const relativesList = (client.relatives || []).map(r => `  - ${r.relation} ${r.name || ''} ${r.phone ? `📞 ${r.phone}` : ''} (${getFormatDate(r.eventDate)})`).join('\n');
-    const textToCopy = `👤 Имя: ${client.clientName || 'Без имени'} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}\n📅 Праздники близких:\n${relativesList}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
+    const relativesList = (client.relatives || []).map(r => `  - ${r?.relation} ${r?.name || ''} ${r?.phone ? `📞 ${r.phone}` : ''} (${getFormatDate(r?.eventDate)})`).join('\n');
+    const textToCopy = `👤 Имя: ${getDisplayName(client)} ${client.isLoyalClient ? '⭐ (VIP)' : ''}\n📱 Телефон: ${client.phone}\n📅 Праздники близких:\n${relativesList}\n${tagsStr}${prefStr}${customOrderStr}\n\n🛒 Заказ (на сумму ${client.totalPrice || 0} ₸):\n${itemsList || '- Пусто -'}`.trim();
     try {
         const textArea = document.createElement("textarea"); textArea.value = textToCopy; document.body.appendChild(textArea); textArea.focus(); textArea.select(); document.execCommand('copy'); document.body.removeChild(textArea);
         setCopiedId(client.id); setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {}
   };
 
+  // === УМНЫЙ РЕНДЕР КАЛЕНДАРЯ ===
   const renderCalendarDays = () => {
     const year = calendarDate.getFullYear(); const month = calendarDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     let startDay = new Date(year, month, 1).getDay() - 1;
     if (startDay === -1) startDay = 6;
     const blanks = Array.from({ length: startDay }).map((_, i) => <div key={`blank-${i}`} className="min-h-[80px]"></div>);
+    
     const days = Array.from({ length: daysInMonth }).map((_, i) => {
       const d = i + 1;
       const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
       const eventsOnThisDay = [];
-      filteredClients.forEach(c => (c.relatives || []).forEach(rel => { if (rel.eventDate === dateStr) eventsOnThisDay.push({ client: c, rel: rel }); }));
+      
+      // Ищем совпадения по всем клиентам
+      filteredClients.forEach(c => {
+        // 1. Ищем в relatives (правильный способ)
+        (c.relatives || []).forEach(rel => { 
+          if (rel?.eventDate === dateStr) {
+            eventsOnThisDay.push({ client: c, rel: rel }); 
+          }
+        });
+        // 2. Ищем в корне (резервный способ для старых баз, чтобы вы не удаляли старые данные!)
+        if (c.clientBirthday === dateStr) {
+           // Добавляем, только если этого клиента еще нет в списке на этот день
+           if (!eventsOnThisDay.some(e => e.client.id === c.id)) {
+             eventsOnThisDay.push({ client: c, rel: { relation: 'Себе', name: c.clientName }});
+           }
+        }
+      });
+      
       return (
         <div key={d} className={`min-h-[80px] p-2 rounded-xl border flex flex-col ${eventsOnThisDay.length > 0 ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700'}`}>
           <span className={`text-sm font-bold ${eventsOnThisDay.length > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>{d}</span>
-          <div className="mt-1 flex flex-col gap-1 overflow-y-auto max-h-16">
-            {eventsOnThisDay.map((e, idx) => (
-              <div key={idx} onClick={() => editClientClick(e.client)} className="text-[10px] font-bold text-white bg-rose-500 rounded px-1.5 py-1 truncate cursor-pointer hover:bg-rose-600 shadow-sm">
-                {e.client.clientName || e.client.phone}
-              </div>
-            ))}
+          <div className="mt-1 flex flex-col gap-1">
+            {eventsOnThisDay.map((e, idx) => {
+              const displayTitle = getDisplayName(e.client);
+              return (
+                <div key={idx} onClick={() => editClientClick(e.client)} className="text-[10px] font-bold text-white bg-rose-500 rounded px-1.5 py-1 truncate cursor-pointer hover:bg-rose-600 shadow-sm" title={`${displayTitle} (${e.rel.relation})`}>
+                  {displayTitle}
+                </div>
+              )
+            })}
           </div>
         </div>
       );
@@ -394,12 +600,76 @@ const App = () => {
     return [...blanks, ...days];
   };
 
-  const allProductNames = Array.from(new Set([...catalog, ...clients.flatMap(c => (c.purchasedItems || []).map(i => i.name))])).sort();
+  const allProductNames = Array.from(new Set([
+    ...catalog, 
+    ...clients.flatMap(c => (c.purchasedItems || []).map(i => i && i.name ? i.name : null).filter(Boolean))
+  ])).sort();
 
+  // === ЭКРАН АВТОРИЗАЦИИ ===
+  if (authState === 'logged_out') {
+    const handleLogin = (e) => {
+      e.preventDefault();
+      if (loginInput === 'Toffee2026' && passInput === 'crm0803') {
+        setAuthState('admin');
+        setAuthError('');
+      } else {
+        setAuthError('Неверный логин или пароль');
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white max-w-md w-full p-8 rounded-3xl shadow-xl border border-slate-100">
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-16 h-16 bg-rose-100 rounded-2xl flex items-center justify-center mb-4 transform rotate-3">
+              <Cake className="w-8 h-8 text-rose-500 transform -rotate-3" />
+            </div>
+            <h2 className="text-3xl font-black text-slate-800">Toffee CRM</h2>
+            <p className="text-slate-500 mt-2 font-medium">Система управления клиентами</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4 mb-6">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Логин</label>
+              <input type="text" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-slate-50 focus:bg-white font-medium" placeholder="Введите логин" />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Пароль</label>
+              <input type="password" value={passInput} onChange={(e) => setPassInput(e.target.value)} className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-slate-50 focus:bg-white font-medium" placeholder="••••••••" />
+            </div>
+            
+            {authError && <p className="text-red-500 text-sm font-bold text-center bg-red-50 py-2 rounded-lg">{authError}</p>}
+
+            <button type="submit" className="w-full bg-rose-500 hover:bg-rose-600 text-white font-black py-4 rounded-xl transition flex justify-center items-center gap-2 shadow-lg shadow-rose-500/30">
+              <Unlock className="w-5 h-5" /> Войти как Администратор
+            </button>
+          </form>
+
+          <div className="relative flex py-4 items-center">
+            <div className="flex-grow border-t border-slate-200"></div>
+            <span className="flex-shrink-0 mx-4 text-slate-400 text-sm font-medium">или</span>
+            <div className="flex-grow border-t border-slate-200"></div>
+          </div>
+
+          <button onClick={() => { setAuthState('guest'); setAuthError(''); }} className="w-full bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold py-3.5 rounded-xl transition flex justify-center items-center gap-2">
+            <Search className="w-5 h-5 text-slate-400" /> Демо-режим (Только просмотр)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // === ГЛАВНЫЙ ИНТЕРФЕЙС ===
   return (
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
-        <input type="file" ref={fileInputRef} onChange={importData} accept=".csv,.json" className="hidden" />
+        <input type="file" ref={fileInputRef} onChange={importData} accept=".csv" className="hidden" />
+
+        {notification && (
+            <div className="fixed bottom-6 right-6 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl z-50 flex items-center gap-3 animate-in slide-in-from-bottom-5 font-bold border border-emerald-400">
+              <Check className="w-6 h-6" /> {notification}
+            </div>
+        )}
 
         <div className="bg-gradient-to-r from-rose-500 to-pink-600 dark:from-rose-900 dark:to-pink-900 rounded-b-[40px] shadow-xl p-8 pt-12 relative overflow-hidden transition-colors duration-300">
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4">
@@ -409,8 +679,12 @@ const App = () => {
               </h1>
               <div className="flex items-center gap-2 mt-2">
                  <p className="text-rose-100 dark:text-rose-200 font-medium opacity-90">{t.subtitle}</p>
+                 <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${authState === 'admin' ? 'bg-green-500/20 text-green-100 border-green-400/30' : 'bg-white/20 text-white border-white/30'}`}>
+                   {authState === 'admin' ? <Unlock className="w-3 h-3"/> : <Lock className="w-3 h-3"/>} 
+                   {authState === 'admin' ? 'Полный доступ' : 'Только просмотр'}
+                 </span>
                  {isDbConnected ? 
-                   <span className="flex items-center gap-1 text-[10px] font-bold bg-green-500/20 text-green-100 px-2 py-0.5 rounded-full border border-green-400/30"><Cloud className="w-3 h-3"/> Online</span> :
+                   <span className="flex items-center gap-1 text-[10px] font-bold bg-blue-500/20 text-blue-100 px-2 py-0.5 rounded-full border border-blue-400/30"><Cloud className="w-3 h-3"/> Online</span> :
                    <span className="flex items-center gap-1 text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-full border border-white/30"><CloudOff className="w-3 h-3"/> Sync...</span>
                  }
               </div>
@@ -435,6 +709,9 @@ const App = () => {
                 <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-xl flex items-center transition shadow-sm">
                   {theme === 'light' ? <Moon className="w-5 h-5"/> : <Sun className="w-5 h-5"/>}
                 </button>
+                <button onClick={() => setAuthState('logged_out')} className="bg-white/20 hover:bg-red-500/80 text-white p-2 rounded-xl flex items-center transition shadow-sm">
+                  <LogOut className="w-5 h-5"/>
+                </button>
               </div>
 
               <div className="flex gap-2 items-center bg-white/10 p-1.5 rounded-2xl backdrop-blur-md justify-center shadow-sm">
@@ -444,27 +721,37 @@ const App = () => {
               </div>
               
               <div className="flex gap-2 justify-center">
-                <button onClick={() => fileInputRef.current?.click()} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm"><Upload className="w-4 h-4" /> CSV</button>
-                <button onClick={exportCSV} className="bg-[#107c41] hover:bg-[#188c4d] text-white p-2 px-4 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Excel"><FileSpreadsheet className="w-4 h-4" /> Экспорт</button>
+                <button onClick={() => handleProtectedAction(() => fileInputRef.current?.click())} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm"><Upload className="w-4 h-4" /> {t.import}</button>
+                <button onClick={exportCSV} className="bg-[#107c41] hover:bg-[#188c4d] text-white px-4 p-2 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Excel"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
               </div>
             </div>
           </div>
         </div>
 
+        {/* ПАНЕЛЬ УПРАВЛЕНИЯ (Поиск, Фильтр, Добавление) */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-[-20px] relative z-20">
           {!showForm && (
             <div className="flex flex-col md:flex-row gap-4 mb-6">
-              <button onClick={() => { setNewClient(initialNewClientState); setEditingId(null); setShowForm(true); }} className="md:w-1/3 bg-white dark:bg-slate-800 text-rose-500 dark:text-rose-400 py-4 rounded-2xl font-bold shadow-md border-b-4 border-rose-200 dark:border-rose-900 flex items-center justify-center gap-2 hover:bg-rose-50 dark:hover:bg-slate-700 transition-all">
+              <button onClick={() => handleProtectedAction(() => { setNewClient(initialNewClientState); setEditingId(null); setShowForm(true); })} className="md:w-1/4 shrink-0 bg-white dark:bg-slate-800 text-rose-500 dark:text-rose-400 py-4 rounded-2xl font-bold shadow-md border-b-4 border-rose-200 dark:border-rose-900 flex items-center justify-center gap-2 hover:bg-rose-50 dark:hover:bg-slate-700 transition-all">
                 <Plus className="w-6 h-6" /> {t.addClient}
               </button>
-              <div className="md:w-2/3 relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search className="h-5 w-5 text-slate-400" /></div>
-                <input type="text" placeholder={t.search} className="w-full h-full min-h-[56px] pl-11 pr-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-rose-400 dark:focus:border-rose-500 outline-none shadow-sm text-slate-700 dark:text-slate-200 font-medium" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              
+              <div className="flex-1 flex flex-col md:flex-row gap-2">
+                <div className="relative flex-1">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Search className="h-5 w-5 text-slate-400" /></div>
+                  <input type="text" placeholder="Поиск (Номер, Имя, Торт)..." className="w-full h-full min-h-[56px] pl-11 pr-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-rose-400 dark:focus:border-rose-500 outline-none shadow-sm text-slate-700 dark:text-slate-200 font-medium" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                </div>
+                <div className="relative md:w-64">
+                   <select value={filterCake} onChange={(e) => setFilterCake(e.target.value)} className="w-full h-full min-h-[56px] px-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-rose-400 outline-none shadow-sm text-slate-700 dark:text-slate-200 font-bold appearance-none cursor-pointer">
+                     <option value="All">🎂 Все десерты</option>
+                     {allProductNames.map((name, idx) => <option key={idx} value={name}>{name}</option>)}
+                   </select>
+                </div>
               </div>
             </div>
           )}
 
-          {}
+          {/* ФОРМА ДОБАВЛЕНИЯ / РЕДАКТИРОВАНИЯ */}
           {showForm && (
             <form onSubmit={addClient} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-700 mb-8 space-y-8 animate-in fade-in">
               <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
@@ -473,6 +760,7 @@ const App = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Левая колонка */}
                 <div className="space-y-5">
                   <h3 className="font-bold text-lg text-rose-500 flex items-center gap-2"><User className="w-5 h-5"/> {t.basicData}</h3>
                   <div className="grid grid-cols-2 gap-4">
@@ -507,6 +795,7 @@ const App = () => {
                   </div>
                 </div>
 
+                {/* Правая колонка (Праздники) */}
                 <div className="space-y-5">
                   <h3 className="font-bold text-lg text-pink-600 dark:text-pink-400 flex items-center gap-2"><Calendar className="w-5 h-5"/> {t.holidays}</h3>
                   {(newClient.relatives || []).map((relative, index) => (
@@ -601,12 +890,13 @@ const App = () => {
             </form>
           )}
 
-          {}
+          {/* ВИД: СПИСОК */}
           {viewMode === 'list' && !showForm && (
             <div className="space-y-4 mt-8">
               {filteredClients.map(client => {
                 const nearestEvent = getNearestEvent(client.relatives);
                 const isUrgent = nearestEvent.daysLeft >= 0 && nearestEvent.daysLeft <= 5;
+                const clientDisplayName = getDisplayName(client);
 
                 return (
                   <div key={client.id} className={`bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border-2 transition-all ${isUrgent ? 'border-red-200 dark:border-red-900/50 bg-red-50/30 dark:bg-red-900/10' : 'border-slate-100 dark:border-slate-700'}`}>
@@ -615,9 +905,11 @@ const App = () => {
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-                              {client.clientName || 'Без имени'} {client.isLoyalClient && <Star className="w-5 h-5 fill-amber-400 text-amber-400"/>}
+                              {clientDisplayName} {client.isLoyalClient && <Star className="w-5 h-5 fill-amber-400 text-amber-400"/>}
                             </h3>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{client.phone}</p>
+                            {client.clientName && client.clientName !== "Без имени" && (
+                              <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{client.phone}</p>
+                            )}
                           </div>
                           <div className="flex flex-col items-end">
                             {isUrgent && (
@@ -628,7 +920,7 @@ const App = () => {
                             {!isUrgent && nearestEvent.daysLeft !== 999 && (
                               <div className="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold mb-2">{t.inDays(nearestEvent.daysLeft)}</div>
                             )}
-                            <select value={client.currentOrderStatus || 'Не связались'} onChange={(e) => changeOrderStatus(client.id, e.target.value)} className="text-xs font-bold px-3 py-1.5 rounded-lg border dark:border-slate-600 outline-none cursor-pointer shadow-sm bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                            <select value={client.currentOrderStatus || 'Не связались'} onChange={(e) => changeOrderStatus(client.id, e.target.value)} disabled={authState === 'guest'} className="text-xs font-bold px-3 py-1.5 rounded-lg border dark:border-slate-600 outline-none cursor-pointer shadow-sm bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50">
                               {Object.entries(statusMap).map(([ruKey, displayValue]) => <option key={ruKey} value={ruKey}>{displayValue}</option>)}
                             </select>
                           </div>
@@ -660,12 +952,12 @@ const App = () => {
                         <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-2">{t.receipt}</p>
                         {(client.purchasedItems || []).length > 0 ? (
                           <ul className="text-sm space-y-1 text-slate-700 dark:text-slate-300 font-medium mb-3">
-                            {client.purchasedItems.map(item => <li key={item.uniqueId}>• {item.name} ({item.price} ₸)</li>)}
+                            {client.purchasedItems.map(item => <li key={item.uniqueId}>• {item.name || 'Товар'} ({item.price || 0} ₸)</li>)}
                           </ul>
                         ) : <p className="text-sm text-slate-400 dark:text-slate-500 mb-3 italic">{t.noHistory}</p>}
                         <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
                           <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">{t.sum}</span>
-                          <span className="font-black text-slate-800 dark:text-white text-lg">{client.totalPrice} ₸</span>
+                          <span className="font-black text-slate-800 dark:text-white text-lg">{client.totalPrice || 0} ₸</span>
                         </div>
                       </div>
                     </div>
@@ -685,7 +977,7 @@ const App = () => {
             </div>
           )}
 
-          {}
+          {/* ВИД: КАНБАН */}
           {viewMode === 'kanban' && !showForm && (
              <div className="flex gap-4 overflow-x-auto pb-8 mt-8 min-h-[600px] items-start">
                {['Не связались', 'Думает', 'Внес предоплату', 'Готовится', 'Готов/Доставлен'].map(status => (
@@ -703,13 +995,19 @@ const App = () => {
                   <div className="p-3 flex flex-col gap-3 flex-1 min-h-[100px]">
                     {filteredClients.filter(c => (c.currentOrderStatus || 'Не связались') === status).map(client => {
                       const nearest = getNearestEvent(client.relatives);
+                      const displayTitle = getDisplayName(client);
                       return (
                         <div key={client.id} draggable onDragStart={(e) => onDragStart(e, client.id)} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-grab hover:shadow-md transition-shadow relative group">
                           <GripHorizontal className="w-4 h-4 text-slate-300 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                           <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1">
-                            {client.clientName || client.phone} {client.isLoyalClient && <Star className="w-3 h-3 fill-amber-400 text-amber-400"/>}
+                            {displayTitle} {client.isLoyalClient && <Star className="w-3 h-3 fill-amber-400 text-amber-400"/>}
                           </h4>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{nearest.name} — {getFormatDate(nearest.date)}</p>
+                          {client.purchasedItems && client.purchasedItems.length > 0 && (
+                             <div className="mt-2 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded inline-block border border-blue-100 dark:border-blue-900/50">
+                               {client.purchasedItems[0].name || 'Товар'}
+                             </div>
+                          )}
                         </div>
                       )
                     })}
@@ -719,8 +1017,12 @@ const App = () => {
              </div>
           )}
 
+          {/* ВИД: КАЛЕНДАРЬ */}
           {viewMode === 'calendar' && !showForm && (
             <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+              <div className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-xl border border-rose-100 dark:border-rose-900 mb-6 text-sm text-rose-800 dark:text-rose-200">
+                 💡 <b>Подсказка:</b> Календарь показывает текущий месяц. Если вы импортировали клиентов с днями рождения в других месяцах (например, в августе или сентябре), нажимайте стрелочку «Вперед», чтобы их увидеть!
+              </div>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-black text-xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-rose-500" /> {t.workload}</h3>
                 <div className="flex items-center gap-4">
@@ -737,30 +1039,43 @@ const App = () => {
           )}
         </div>
       </div>
-      
-      {/* Модалка WhatsApp */}
+
+      {/* МОДАЛЬНОЕ ОКНО ДОСТУПА ГОСТЯ */}
+      {showAccessModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
+            <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Lock className="w-10 h-10 text-red-500" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">Доступ ограничен</h3>
+            <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium leading-relaxed">
+              Вы находитесь в гостевом режиме. Для редактирования, удаления или импорта данных необходимо войти под учетной записью Администратора.
+            </p>
+            <button onClick={() => setShowAccessModal(false)} className="w-full bg-slate-800 dark:bg-slate-700 text-white py-4 rounded-2xl font-bold hover:bg-slate-900 dark:hover:bg-slate-600 transition shadow-lg">
+              Понятно
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp ПОМОЩНИК */}
       {whatsappHelper.show && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-700">
-            <h3 className="text-xl font-black text-slate-800 dark:text-white mb-4 flex items-center gap-2"><MessageCircle className="text-[#25D366]"/> {t.editDraft}</h3>
-            <textarea className="w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-[#25D366] outline-none text-sm resize-none h-40 mb-4 dark:text-white font-medium" value={whatsappHelper.draftText} onChange={e => setWhatsappHelper({...whatsappHelper, draftText: e.target.value})}></textarea>
-            
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl mb-6">
-              <p className="text-xs font-bold text-blue-800 dark:text-blue-400 mb-2 flex items-center gap-1"><Info className="w-4 h-4"/> {t.tips}</p>
-              <ul className="text-[10px] text-blue-600 dark:text-blue-300 space-y-1 list-disc pl-4">
-                <li>{t.tip1}</li><li>{t.tip2}</li><li>{t.tip3}</li>
-              </ul>
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-black text-[#25D366] flex items-center gap-2"><MessageCircle className="w-6 h-6"/> {t.msg}</h3>
+              <button onClick={() => setWhatsappHelper({ show: false, client: null, draftText: '' })} className="p-2 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-xl transition"><X className="w-5 h-5"/></button>
             </div>
+            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Черновик сообщения:</p>
+            <textarea className="w-full p-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-700 rounded-2xl outline-none focus:border-[#25D366] min-h-[150px] mb-6 text-sm font-medium dark:text-white resize-none" value={whatsappHelper.draftText} onChange={e => setWhatsappHelper({...whatsappHelper, draftText: e.target.value})}></textarea>
             
-            <div className="flex gap-3">
-              <button onClick={() => setWhatsappHelper({show: false, client: null, draftText: ''})} className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 py-3 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition">Отмена</button>
-              <button onClick={sendToWhatsApp} className="flex-1 bg-[#25D366] hover:bg-[#1ebd5a] text-white py-3 rounded-xl font-bold transition flex justify-center items-center gap-2 shadow-lg shadow-[#25D366]/30">{t.sendWa}</button>
-            </div>
+            <button onClick={sendToWhatsApp} className="w-full bg-[#25D366] hover:bg-[#20b858] text-white py-4 rounded-2xl font-black text-lg flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#25D366]/30">
+              <MessageCircle className="w-6 h-6" /> Отправить в WhatsApp
+            </button>
           </div>
         </div>
       )}
     </div>
   );
 };
-
 export default App;
