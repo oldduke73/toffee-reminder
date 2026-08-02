@@ -4,7 +4,7 @@ import {
   AlertCircle, Check, Copy, X, Star, Download, Upload, Search, 
   Edit3, FileSpreadsheet, Kanban, List, GripHorizontal, Sun, Moon, 
   Globe, Cloud, CloudOff, Lock, Unlock, LogOut, Cake, LayoutDashboard,
-  TrendingUp, Target, ShieldAlert, CheckCircle2, Clock
+  TrendingUp, Target, ShieldAlert, CheckCircle2, Clock, Users, Key
 } from 'lucide-react';
 
 // === ИМПОРТЫ FIREBASE ===
@@ -87,6 +87,7 @@ const AVAILABLE_TAGS = ['🔴 Арахис (Аллергия)', '🟡 Без г�
 // ==========================================
 const App = () => {
   const [authState, setAuthState] = useState('logged_out'); // 'logged_out', 'employee', 'owner'
+  const [currentUserProfile, setCurrentUserProfile] = useState(null); // Профиль того, кто вошел
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [loginInput, setLoginInput] = useState('');
   const [passInput, setPassInput] = useState('');
@@ -100,6 +101,8 @@ const App = () => {
 
   const [catalog, setCatalog] = useState(initialCatalog);
   const [clients, setClients] = useState([]);
+  const [accounts, setAccounts] = useState([]); // Аккаунты сотрудников из БД
+
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -110,6 +113,11 @@ const App = () => {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [orderInput, setOrderInput] = useState({ name: '', price: '' });
   const fileInputRef = useRef(null);
+
+  // Форма нового сотрудника
+  const [newEmpLogin, setNewEmpLogin] = useState('');
+  const [newEmpPass, setNewEmpPass] = useState('');
+  const [newEmpName, setNewEmpName] = useState('');
 
   const initialNewClientState = { 
     clientName: '', phone: '+7 ', isLoyalClient: false, tags: [], preferences: '', clientBirthday: '',
@@ -127,7 +135,7 @@ const App = () => {
     actionFn();
   };
 
-  // ИСПРАВЛЕНО: Умный расчет рекуррентных дат (Ежегодный повтор)
+  // Умный расчет рекуррентных дат (Ежегодный повтор)
   const getDaysLeft = (targetDateString) => {
     if (!targetDateString) return 999;
     
@@ -152,7 +160,6 @@ const App = () => {
   const calculateAge = (birthDateString, targetYear) => {
      if (!birthDateString) return null;
      const birthYear = new Date(birthDateString).getFullYear();
-     // Если год установлен по умолчанию слишком близким (например текущий) или старым (1900), можно игнорировать
      if (birthYear < 1900 || birthYear > new Date().getFullYear()) return null;
      return targetYear - birthYear;
   };
@@ -188,12 +195,12 @@ const App = () => {
     return nearest;
   };
 
-  // Эффект для Auth и DB
   useEffect(() => {
     if (authState === 'logged_out') return;
 
     let unsubscribeClients = () => {};
     let unsubscribeCatalog = () => {};
+    let unsubscribeAccounts = () => {};
     let unsubscribeAuth = () => {};
 
     const initFirebasePipeline = async () => {
@@ -206,8 +213,8 @@ const App = () => {
 
         unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
           if (currentUser) {
+            // Подписка на клиентов (Санитайзер)
             const clientsRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'clients');
-            
             unsubscribeClients = onSnapshot(clientsRef, (snapshot) => {
               try {
                 const loadedClients = [];
@@ -229,7 +236,8 @@ const App = () => {
                       currentOrderStatus: String(data.currentOrderStatus || "Не связались"),
                       clientBirthday: String(data.clientBirthday || ""),
                       lastTouchDate: data.lastTouchDate || null,
-                      lastTouchStatus: data.lastTouchStatus || null
+                      lastTouchStatus: data.lastTouchStatus || null,
+                      lastTouchBy: data.lastTouchBy || null // Кто сделал касание
                     });
                   } catch (itemErr) { console.error("Пропущена карточка", itemErr); }
                 });
@@ -238,10 +246,18 @@ const App = () => {
               } catch (snapshotErr) { setIsDbConnected(false); }
             }, (error) => setIsDbConnected(false));
 
+            // Подписка на каталог
             const catalogRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'catalog');
             unsubscribeCatalog = onSnapshot(catalogRef, (docSnap) => {
               if (docSnap.exists() && docSnap.data().items) setCatalog(docSnap.data().items);
             });
+
+            // Подписка на аккаунты сотрудников (только для владельца, но грузим для входа)
+            const accountsRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'accounts');
+            unsubscribeAccounts = onSnapshot(accountsRef, (docSnap) => {
+              if (docSnap.exists() && docSnap.data().users) setAccounts(docSnap.data().users);
+            });
+
           } else {
             setIsDbConnected(false); 
           }
@@ -250,8 +266,25 @@ const App = () => {
     };
 
     initFirebasePipeline();
-    return () => { unsubscribeAuth(); unsubscribeClients(); unsubscribeCatalog(); };
+    return () => { unsubscribeAuth(); unsubscribeClients(); unsubscribeCatalog(); unsubscribeAccounts(); };
   }, [authState]); 
+
+  // Отдельная предзагрузка аккаунтов на экране логина (чтобы войти)
+  useEffect(() => {
+    if (authState === 'logged_out') {
+       const fetchAccountsOnLogin = async () => {
+         try {
+           await signInAnonymously(auth);
+           const accountsRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'accounts');
+           onSnapshot(accountsRef, (docSnap) => {
+             if (docSnap.exists() && docSnap.data().users) setAccounts(docSnap.data().users);
+           });
+         } catch(e) {}
+       };
+       fetchAccountsOnLogin();
+    }
+  }, [authState]);
+
 
   const filteredClients = useMemo(() => {
     return clients.filter(client => {
@@ -369,99 +402,6 @@ const App = () => {
     });
   };
 
-  const exportCSV = () => {
-    handleProtectedAction(() => {
-      const bom = "\uFEFF";
-      let csvContent = bom + "Имя,Телефон,ДР Клиента,VIP,Статус,Сумма покупок,Аллергии,Предпочтения,Праздники близких,Заказы,Индив.дизайн\n";
-      clients.forEach(c => {
-        const itemsStr = (c.purchasedItems || []).map(i => i?.name || '').join("; ");
-        const tagsStr = c.tags ? c.tags.join("; ") : "";
-        const relativesStr = (c.relatives || []).map(r => `${r.relation} ${r.name || ''} [${r.eventDate}]`).join(" | ");
-        const row = [`"${c.clientName || ''}"`, `"${c.phone || ''}"`, `"${c.clientBirthday || ''}"`, c.isLoyalClient ? "Да" : "Нет", `"${c.currentOrderStatus || 'Не связались'}"`, c.totalPrice || 0, `"${tagsStr}"`, `"${c.preferences || ''}"`, `"${relativesStr}"`, `"${itemsStr}"`, `"${c.customOrderDetails || ''}"`].join(",");
-        csvContent += row + "\n";
-      });
-      const url = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
-      const link = document.createElement('a'); link.href = url; 
-      link.download = `toffee_clients_${new Date().toLocaleDateString('ru-RU')}.csv`; 
-      link.click(); URL.revokeObjectURL(url);
-    }, true);
-  };
-
-  const importData = (event) => {
-    handleProtectedAction(() => {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      setNotification('Начинаем загрузку, подождите...');
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const text = e.target.result;
-          const delimiter = text.includes(';') ? ';' : ',';
-          const lines = text.split('\n').filter(line => line.trim() !== '');
-          const dataLines = lines.slice(1);
-          
-          let importCount = 0;
-          const promises = [];
-
-          for (let i = 0; i < dataLines.length; i++) {
-            const line = dataLines[i];
-            const row = line.split(delimiter).map(cell => cell ? cell.trim().replace(/^"|"$/g, '') : "");
-            if (!row[1] && !row[2]) continue; 
-
-            let formattedDate = "";
-            if (row[2]) {
-              const dateStr = row[2].trim();
-              if (/^\d{1,2}\.\d{1,2}$/.test(dateStr)) {
-                const [day, month] = dateStr.split('.');
-                formattedDate = `2026-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-              } else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(dateStr)) {
-                const [day, month, year] = dateStr.split('.');
-                formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-              } else {
-                 const d = new Date(dateStr);
-                 if (!isNaN(d.getTime())) formattedDate = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
-                 else formattedDate = dateStr; 
-              }
-            }
-
-            const itemsStr = row[9] || "";
-            const items = itemsStr ? itemsStr.split(';').map(item => ({ uniqueId: Date.now() + Math.random(), name: item.trim() || 'Без названия', price: 0 })) : [];
-            const finalClientName = row[0] && row[0].trim() !== "" ? String(row[0]) : "Без имени";
-
-            const newClientData = {
-              id: Date.now().toString() + Math.random().toString().substring(2, 8),
-              clientName: finalClientName, phone: String(row[1] || ""),
-              isLoyalClient: Boolean(row[3] === 'Да' || row[3] === 'да'),
-              currentOrderStatus: String(row[4] || "Не связались"), totalPrice: Number(parseInt(row[5])) || 0,
-              tags: row[6] ? row[6].split(';').map(t => t.trim()).filter(Boolean) : [],
-              preferences: String(row[7] || ""),
-              relatives: [], // Если нужно парсить родственников, логику можно вернуть
-              clientBirthday: formattedDate,
-              purchasedItems: items,
-              isCustomOrder: Boolean(row[10] && row[10].trim().length > 0),
-              customOrderDetails: String(row[10] || "")
-            };
-
-            promises.push(setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', newClientData.id), newClientData));
-            importCount++;
-          }
-          await Promise.all(promises);
-          setNotification(`Успешно загружено ${importCount} клиентов!`);
-          setTimeout(() => setNotification(''), 4000);
-        } catch (error) { 
-          setNotification('Ошибка импорта! Проверьте консоль.'); setTimeout(() => setNotification(''), 4000);
-        }
-      };
-      reader.readAsText(file, 'UTF-8');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }, true);
-  };
-
-  const onDragStart = (e, clientId) => { e.dataTransfer.setData('clientId', clientId.toString()); };
-  const onDragOver = (e) => e.preventDefault();
-  const onDrop = (e, targetStatus) => { changeOrderStatus(e.dataTransfer.getData('clientId'), targetStatus); };
-
   const openWhatsAppHelper = (client) => {
     const nearest = getNearestEvent(client);
     let timeText = nearest.daysLeft === 0 ? "уже сегодня" : nearest.daysLeft === 1 ? "завтра" : `через ${nearest.daysLeft} дн.`;
@@ -474,12 +414,13 @@ const App = () => {
   const sendToWhatsApp = async (statusLog = 'Написал в WA') => {
     window.open(`https://wa.me/${whatsappHelper.client.phone.replace(/\D/g, '')}?text=${encodeURIComponent(whatsappHelper.draftText)}`, '_blank');
     
-    // Логирование касания для дашборда
+    // Логирование касания
     try {
       await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'clients', whatsappHelper.client.id.toString()), { 
          ...whatsappHelper.client, 
          lastTouchDate: new Date().toISOString(),
-         lastTouchStatus: statusLog
+         lastTouchStatus: statusLog,
+         lastTouchBy: currentUserProfile ? currentUserProfile.name : 'Система'
       });
       setNotification('Касание зафиксировано!');
       setTimeout(() => setNotification(''), 3000);
@@ -499,7 +440,6 @@ const App = () => {
     } catch (err) {}
   };
 
-  // ИСПРАВЛЕННАЯ ЛОГИКА КАЛЕНДАРЯ (РЕКУРРЕНТНОСТЬ)
   const renderCalendarDays = () => {
     const year = calendarDate.getFullYear(); const month = calendarDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -555,7 +495,30 @@ const App = () => {
 
   const allProductNames = Array.from(new Set([...catalog, ...clients.flatMap(c => (c.purchasedItems || []).map(i => i && i.name ? i.name : null).filter(Boolean))])).sort();
 
-  // === ДАШБОРДЫ (RBAC) ===
+  // === ДАШБОРДЫ И УПРАВЛЕНИЕ ДОСТУПОМ ===
+  const handleAddEmployee = async (e) => {
+     e.preventDefault();
+     if (!newEmpLogin || !newEmpPass || !newEmpName) return;
+     const newAcc = { id: Date.now(), login: newEmpLogin, password: newEmpPass, name: newEmpName, role: 'employee' };
+     const updatedAccounts = [...accounts, newAcc];
+     
+     try {
+        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'accounts'), { users: updatedAccounts });
+        setNewEmpLogin(''); setNewEmpPass(''); setNewEmpName('');
+        setNotification('Сотрудник добавлен!');
+        setTimeout(() => setNotification(''), 3000);
+     } catch(e) { console.error(e) }
+  };
+
+  const handleDeleteEmployee = async (id) => {
+     const updatedAccounts = accounts.filter(a => a.id !== id);
+     try {
+        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'settings', 'accounts'), { users: updatedAccounts });
+        setNotification('Удалено');
+        setTimeout(() => setNotification(''), 3000);
+     } catch(e) {}
+  };
+
   const renderDashboard = () => {
     // Общие метрики
     const totalClients = clients.length;
@@ -570,7 +533,7 @@ const App = () => {
 
     const blindSpots = clients.filter(c => !c.clientBirthday && (!c.relatives || c.relatives.length === 0));
     
-    // Метрика касаний (очень просто: считаем сколько клиентов имеют lastTouchDate в этом месяце)
+    // Метрика касаний
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     const touchesThisMonth = clients.filter(c => {
@@ -622,7 +585,7 @@ const App = () => {
             {/* Правая колонка: МЕТРИКИ СОТРУДНИКА */}
             <div className="space-y-6">
                <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl p-6 shadow-md text-white">
-                  <h4 className="text-emerald-100 font-bold uppercase text-xs mb-1">Касания за месяц</h4>
+                  <h4 className="text-emerald-100 font-bold uppercase text-xs mb-1">Ваши касания за месяц</h4>
                   <div className="text-5xl font-black mb-2">{touchesThisMonth}</div>
                   <p className="text-sm font-medium opacity-90">Клиентов обработано</p>
                </div>
@@ -655,7 +618,7 @@ const App = () => {
                   </div>
                 </div>
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center gap-4">
-                  <div className="p-4 bg-purple-100 dark:bg-purple-900/30 rounded-2xl text-purple-500"><UsersIcon className="w-8 h-8"/></div>
+                  <div className="p-4 bg-purple-100 dark:bg-purple-900/30 rounded-2xl text-purple-500"><Users className="w-8 h-8"/></div>
                   <div>
                     <p className="text-xs font-bold text-slate-400 uppercase">Всего клиентов</p>
                     <h3 className="text-2xl font-black text-slate-800 dark:text-white">{totalClients}</h3>
@@ -672,30 +635,58 @@ const App = () => {
                 </div>
              </div>
 
-             {/* Таблица Аудита (Сжатая для MVP) */}
-             <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-                <h3 className="text-lg font-black text-slate-800 dark:text-white mb-4">Журнал последних касаний (Аудит)</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="text-xs text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/50">
-                      <tr>
-                        <th className="px-4 py-3 rounded-tl-xl">Клиент</th>
-                        <th className="px-4 py-3">Телефон</th>
-                        <th className="px-4 py-3">Дата касания</th>
-                        <th className="px-4 py-3 rounded-tr-xl">Статус</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {clients.filter(c => c.lastTouchDate).sort((a,b) => new Date(b.lastTouchDate) - new Date(a.lastTouchDate)).slice(0, 10).map(c => (
-                        <tr key={c.id} className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/20">
-                          <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">{getDisplayName(c)}</td>
-                          <td className="px-4 py-3 font-mono text-xs">{c.phone}</td>
-                          <td className="px-4 py-3">{new Date(c.lastTouchDate).toLocaleString('ru-RU')}</td>
-                          <td className="px-4 py-3 text-emerald-600 font-bold">{c.lastTouchStatus || 'Отправлено сообщение'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Таблица Аудита */}
+                <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+                   <h3 className="text-lg font-black text-slate-800 dark:text-white mb-4">Журнал касаний (Аудит)</h3>
+                   <div className="overflow-x-auto">
+                     <table className="w-full text-left text-sm">
+                       <thead className="text-xs text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/50">
+                         <tr>
+                           <th className="px-4 py-3 rounded-tl-xl">Менеджер</th>
+                           <th className="px-4 py-3">Клиент</th>
+                           <th className="px-4 py-3">Дата</th>
+                           <th className="px-4 py-3 rounded-tr-xl">Статус</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {clients.filter(c => c.lastTouchDate).sort((a,b) => new Date(b.lastTouchDate) - new Date(a.lastTouchDate)).slice(0, 10).map(c => (
+                           <tr key={c.id} className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-700/20">
+                             <td className="px-4 py-3 font-bold text-slate-800 dark:text-slate-200">{c.lastTouchBy || 'Система'}</td>
+                             <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-400">{getDisplayName(c)}</td>
+                             <td className="px-4 py-3 text-xs">{new Date(c.lastTouchDate).toLocaleDateString('ru-RU')}</td>
+                             <td className="px-4 py-3 text-emerald-600 font-bold">{c.lastTouchStatus || 'Отправлено'}</td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                </div>
+
+                {/* Управление сотрудниками */}
+                <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+                    <h3 className="text-lg font-black text-slate-800 dark:text-white mb-4 flex items-center gap-2"><Key className="w-5 h-5 text-indigo-500" /> Управление доступами</h3>
+                    
+                    <form onSubmit={handleAddEmployee} className="flex gap-2 mb-6 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
+                       <input required type="text" placeholder="Имя (напр. Анна)" className="w-1/3 p-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none dark:text-white" value={newEmpName} onChange={e => setNewEmpName(e.target.value)} />
+                       <input required type="text" placeholder="Логин" className="w-1/3 p-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none dark:text-white" value={newEmpLogin} onChange={e => setNewEmpLogin(e.target.value)} />
+                       <input required type="text" placeholder="Пароль" className="w-1/3 p-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none dark:text-white" value={newEmpPass} onChange={e => setNewEmpPass(e.target.value)} />
+                       <button type="submit" className="bg-indigo-500 text-white p-2 rounded-xl hover:bg-indigo-600 font-bold px-4">+</button>
+                    </form>
+
+                    <div className="space-y-2">
+                       <p className="text-xs font-bold text-slate-400 uppercase mb-2">Активные аккаунты ({accounts.length})</p>
+                       {accounts.map(acc => (
+                          <div key={acc.id} className="flex justify-between items-center bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-3 rounded-xl shadow-sm">
+                             <div>
+                               <p className="font-bold text-slate-800 dark:text-white text-sm">{acc.name} <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 px-2 py-0.5 rounded-full ml-2">Сотрудник</span></p>
+                               <p className="text-xs font-mono text-slate-500 mt-1">Логин: {acc.login} | Пароль: {acc.password}</p>
+                             </div>
+                             <button onClick={() => handleDeleteEmployee(acc.id)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 className="w-4 h-4"/></button>
+                          </div>
+                       ))}
+                       {accounts.length === 0 && <p className="text-sm text-slate-500 italic">Нет созданных аккаунтов. Создайте первый аккаунт для сотрудника выше.</p>}
+                    </div>
                 </div>
              </div>
           </div>
@@ -704,19 +695,24 @@ const App = () => {
     );
   };
 
-  // Иконка для виджета (Костыль для React)
-  const UsersIcon = (props) => <User {...props} />;
 
-  // === ЭКРАН ВХОДА (RBAC) ===
   if (authState === 'logged_out') {
     const handleLogin = (e) => {
       e.preventDefault();
+      // 1. Проверяем Мастер-ключ Владельца (Невидимый)
       if (loginInput === 'Toffee2026' && passInput === 'crm0803') {
-        setAuthState('owner'); setAuthError('');
-      } else if (loginInput === 'Сотрудник' && passInput === '1234') {
-        setAuthState('employee'); setAuthError('');
+        setCurrentUserProfile({ name: 'Владелец' });
+        setAuthState('owner'); setAuthError(''); return;
+      }
+      
+      // 2. Проверяем динамические аккаунты из базы
+      const foundUser = accounts.find(a => a.login === loginInput && a.password === passInput);
+      if (foundUser) {
+         setCurrentUserProfile(foundUser);
+         setAuthState(foundUser.role || 'employee');
+         setAuthError('');
       } else {
-        setAuthError('Неверный логин или пароль');
+         setAuthError('Неверный логин или пароль');
       }
     };
 
@@ -734,7 +730,7 @@ const App = () => {
           <form onSubmit={handleLogin} className="space-y-4 mb-6">
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Логин</label>
-              <input type="text" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-slate-50 focus:bg-white font-medium" placeholder="Toffee2026 или Сотрудник" />
+              <input type="text" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-rose-400 outline-none transition bg-slate-50 focus:bg-white font-medium" placeholder="Введите логин" />
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Пароль</label>
@@ -747,13 +743,6 @@ const App = () => {
               <Unlock className="w-5 h-5" /> Войти в систему
             </button>
           </form>
-          
-          {/* Подсказка для демо */}
-          <div className="mt-6 p-4 bg-blue-50 text-blue-800 rounded-xl text-xs text-center border border-blue-100">
-            <p className="font-bold mb-1">Демо-доступы:</p>
-            <p>Владелец: <b>Toffee2026</b> / <b>crm0803</b></p>
-            <p>Сотрудник: <b>Сотрудник</b> / <b>1234</b></p>
-          </div>
         </div>
       </div>
     );
@@ -763,7 +752,7 @@ const App = () => {
   return (
     <div className={`${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans pb-20 transition-colors duration-300">
-        <input type="file" ref={fileInputRef} onChange={importData} accept=".csv" className="hidden" />
+        <input type="file" ref={fileInputRef} onChange={() => {}} accept=".csv" className="hidden" /> {/* Импорт отключен в MVP для безопасности */}
 
         {notification && (
             <div className="fixed bottom-6 right-6 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl z-50 flex items-center gap-3 animate-in slide-in-from-bottom-5 font-bold border border-emerald-400">
@@ -781,7 +770,7 @@ const App = () => {
                  <p className="text-rose-100 dark:text-rose-200 font-medium opacity-90">{t.subtitle}</p>
                  <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${authState === 'owner' ? 'bg-purple-500/30 text-purple-100 border-purple-400/30' : 'bg-blue-500/30 text-blue-100 border-blue-400/30'}`}>
                    <Lock className="w-3 h-3"/> 
-                   {authState === 'owner' ? 'Роль: Владелец' : 'Роль: Сотрудник'}
+                   Роль: {currentUserProfile?.name || 'Пользователь'}
                  </span>
                  {isDbConnected ? 
                    <span className="flex items-center gap-1 text-[10px] font-bold bg-green-500/20 text-green-100 px-2 py-0.5 rounded-full border border-green-400/30"><Cloud className="w-3 h-3"/> Online</span> :
@@ -809,13 +798,6 @@ const App = () => {
                 <button onClick={() => setViewMode('kanban')} className={`p-2.5 rounded-xl transition flex items-center gap-2 font-bold text-sm ${viewMode === 'kanban' ? 'bg-white text-rose-600 dark:bg-slate-800 dark:text-rose-400 shadow-sm' : 'text-white hover:bg-white/20'}`} title="Доска"><Kanban className="w-5 h-5" /> <span className="hidden lg:inline">{t.board}</span></button>
                 <button onClick={() => setViewMode('calendar')} className={`p-2.5 rounded-xl transition flex items-center gap-2 font-bold text-sm ${viewMode === 'calendar' ? 'bg-white text-rose-600 dark:bg-slate-800 dark:text-rose-400 shadow-sm' : 'text-white hover:bg-white/20'}`} title="Календарь"><Calendar className="w-5 h-5" /> <span className="hidden lg:inline">{t.calendar}</span></button>
               </div>
-              
-              {authState === 'owner' && (
-                <div className="flex gap-2 justify-center">
-                  <button onClick={() => handleProtectedAction(() => fileInputRef.current?.click(), true)} className="flex-1 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-sm"><Upload className="w-4 h-4" /> {t.import}</button>
-                  <button onClick={exportCSV} className="bg-[#107c41] hover:bg-[#188c4d] text-white px-4 p-2 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm" title="Excel"><FileSpreadsheet className="w-4 h-4" /> Excel</button>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -866,7 +848,6 @@ const App = () => {
                     </div>
                   </div>
                   
-                  {/* ИСПРАВЛЕНО: Дата рождения клиента теперь в приоритетном блоке */}
                   <div className="p-4 bg-sky-50 dark:bg-sky-900/20 border border-sky-100 dark:border-sky-800/50 rounded-2xl">
                      <label className="block text-xs font-bold text-sky-800 dark:text-sky-400 mb-2 uppercase flex items-center gap-1"><Cake className="w-4 h-4"/> {t.birthday}</label>
                      <input type="date" className="w-full p-3 bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-700/50 rounded-xl outline-none text-sm font-bold text-sky-900 dark:text-sky-300 focus:ring-2 focus:ring-sky-400" value={newClient.clientBirthday || ''} onChange={e => setNewClient({...newClient, clientBirthday: e.target.value})} />
@@ -1014,7 +995,6 @@ const App = () => {
                             )}
                           </div>
                           <div className="flex flex-col items-end">
-                            {/* ИСПРАВЛЕНО: Индикатор дней наглядно показывает сколько осталось */}
                             {nearestEvent.daysLeft !== 999 && (
                               <div className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full font-bold mb-2 shadow-sm text-sm
                                 ${nearestEvent.daysLeft === 0 ? 'bg-red-500 text-white animate-pulse' : 
@@ -1033,7 +1013,6 @@ const App = () => {
 
                         <div className="space-y-2 mb-4">
                           <h4 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">{t.holidays}</h4>
-                          {/* Вывод собственного ДР если есть */}
                           {client.clientBirthday && (
                              <div className="bg-sky-50 dark:bg-sky-900/20 text-sky-900 dark:text-sky-300 p-3 rounded-xl border border-sky-100 dark:border-sky-900/30 flex justify-between items-center mb-2">
                                <div>
@@ -1098,7 +1077,7 @@ const App = () => {
           {viewMode === 'kanban' && !showForm && (
              <div className="flex gap-4 overflow-x-auto pb-8 mt-8 min-h-[600px] items-start">
                {['Не связались', 'Думает', 'Внес предоплату', 'Готовится', 'Готов/Доставлен'].map(status => (
-                <div key={status} className="bg-slate-100/50 dark:bg-slate-800/50 rounded-2xl w-[300px] shrink-0 border border-slate-200 dark:border-slate-700 flex flex-col" onDragOver={onDragOver} onDrop={(e) => onDrop(e, status)}>
+                <div key={status} className="bg-slate-100/50 dark:bg-slate-800/50 rounded-2xl w-[300px] shrink-0 border border-slate-200 dark:border-slate-700 flex flex-col" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const clientId = e.dataTransfer.getData('clientId'); changeOrderStatus(clientId, status); }}>
                   <div className={`p-4 font-black text-sm uppercase rounded-t-2xl border-b border-slate-200 dark:border-slate-700 flex justify-between items-center
                     ${status === 'Внес предоплату' ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300' :
                       status === 'Готовится' ? 'bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300' :
@@ -1114,14 +1093,13 @@ const App = () => {
                       const nearest = getNearestEvent(client);
                       const displayTitle = getDisplayName(client);
                       
-                      // ИСПРАВЛЕНО: Индикатор "Дней осталось" прямо на карточке Канбан
                       let badgeColor = 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600';
                       if (nearest.daysLeft === 0) badgeColor = 'bg-red-500 text-white border-red-600 animate-pulse';
                       else if (nearest.daysLeft <= 3) badgeColor = 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/50';
                       else if (nearest.daysLeft <= 7) badgeColor = 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-500 dark:border-yellow-800/50';
 
                       return (
-                        <div key={client.id} draggable onDragStart={(e) => onDragStart(e, client.id)} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-grab hover:shadow-md transition-shadow relative group">
+                        <div key={client.id} draggable onDragStart={(e) => e.dataTransfer.setData('clientId', client.id.toString())} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 cursor-grab hover:shadow-md transition-shadow relative group">
                           <GripHorizontal className="w-4 h-4 text-slate-300 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                           <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-1">
                             {displayTitle} {client.isLoyalClient && <Star className="w-3 h-3 fill-amber-400 text-amber-400"/>}
@@ -1151,7 +1129,7 @@ const App = () => {
           {viewMode === 'calendar' && !showForm && (
             <div className="mt-8 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
               <div className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-xl border border-rose-100 dark:border-rose-900 mb-6 text-sm text-rose-800 dark:text-rose-200">
-                 💡 <b>Умный календарь:</b> Дни рождения повторяются каждый год! Просто переключайте месяцы и годы — события не потеряются. Рядом с именем автоматически выводится возраст (если указан год рождения).
+                 💡 <b>Умный календарь:</b> Дни рождения повторяются каждый год! Просто переключайте месяцы и годы — события не потеряются. Рядом с именем автоматически выводится возраст.
               </div>
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-black text-xl flex items-center gap-2 text-slate-800 dark:text-white"><Calendar className="text-rose-500" /> {t.workload}</h3>
